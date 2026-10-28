@@ -4,14 +4,18 @@
 // GitHubPullRequestProvider: any state, most recently updated first), and the check rollup of
 // gitHubPullRequestJson.ts (toCheckStatus, rollupChecksState, the review decision and
 // mergeability), pullRequestReviews.graphql (review threads, D1447) and pullRequestReads.graphql
-// (the repository's merge methods). T3 sends its actions as GraphQL mutations; Jhin runs the
-// `gh pr merge|ready|close|reopen` that send them (D1451).
+// (the repository's merge methods, PullRequestActionState). T3 sends its actions as GraphQL
+// mutations; Jhin runs the `gh pr merge|ready|close|reopen` that send them (D1451) and T3's
+// own mutations and REST calls through `gh api` for the others (GitHubPullRequestApi.ts's
+// runPullRequestAction, D1661, D1662); an author's avatar is T3's loginAvatarUrl (D1665).
 import {
   parsePullRequestUrl,
   type PullRequest,
   type PullRequestCheck,
   type PullRequestChecks,
+  type PullRequestAction,
   type PullRequestMergeMethod,
+  type PullRequestUpdateMethod,
 } from "@jhin/source-control-api";
 
 import {
@@ -36,7 +40,7 @@ const GH_ENV = {
 };
 const GH_TIMEOUT_MS = 20_000;
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,author,additions,deletions,changedFiles,reviewDecision,mergeable";
+  "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup,author,additions,deletions,changedFiles,reviewDecision,mergeable,autoMergeRequest";
 /** A listed pull request: no checks, which would make a long list slow to read. */
 const LIST_FIELDS =
   "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,updatedAt,mergedAt,closedAt";
@@ -141,6 +145,7 @@ interface RawPullRequest {
   readonly changedFiles?: unknown;
   readonly reviewDecision?: unknown;
   readonly mergeable?: unknown;
+  readonly autoMergeRequest?: unknown;
 }
 
 const count = (value: unknown) =>
@@ -166,22 +171,36 @@ function mergeabilityOf(value: unknown): PullRequest["mergeability"] {
   return word === "MERGEABLE" ? "mergeable" : word === "CONFLICTING" ? "conflicting" : "unknown";
 }
 
+/**
+ * T3's loginAvatarUrl (D1665): `gh pr view` names no avatar, and GitHub serves one at
+ * `<host>/<login>.png` for every login (a bot's `app/…` login is none).
+ */
+export function loginAvatarUrl(login: string, host: string): string | null {
+  return /^[a-z0-9][a-z0-9-]{0,38}$/iu.test(login) ? `https://${host}/${login}.png?size=80` : null;
+}
+
 /** The row details of D1449, where `gh` told them. */
 function detailsOf(raw: RawPullRequest): Partial<PullRequest> {
   const login = typeof raw.author?.login === "string" ? raw.author.login : undefined;
   const name =
     typeof raw.author?.name === "string" && raw.author.name !== "" ? raw.author.name : null;
+  const avatarUrl =
+    login === undefined || typeof raw.url !== "string"
+      ? null
+      : loginAvatarUrl(login, hostOf(raw.url));
   const additions = count(raw.additions);
   const deletions = count(raw.deletions);
   const changedFiles = count(raw.changedFiles);
   const reviewDecision = reviewDecisionOf(raw.reviewDecision);
   return {
-    ...(login === undefined ? {} : { author: { login, name } }),
+    ...(login === undefined ? {} : { author: { login, name, avatarUrl } }),
     ...(additions === undefined ? {} : { additions }),
     ...(deletions === undefined ? {} : { deletions }),
     ...(changedFiles === undefined ? {} : { changedFiles }),
     ...(reviewDecision === undefined ? {} : { reviewDecision }),
     ...(raw.mergeable === undefined ? {} : { mergeability: mergeabilityOf(raw.mergeable) }),
+    // `null` while none is armed (D1661).
+    ...(raw.autoMergeRequest === undefined ? {} : { autoMerge: raw.autoMergeRequest !== null }),
   };
 }
 
@@ -739,6 +758,275 @@ async function ghRun(ghPath: string, cwd: string, args: readonly string[]): Prom
   throw new GitHubUnavailable("failed", line ?? `gh exited with code ${result.code}`);
 }
 
+/** T3's PullRequestActionState, with what deleting the head branch and approving runs need. */
+const ACTION_STATE = `query($owner: String!, $name: String!, $number: Int!, $headRef: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      id state headRefOid headRefName baseRefName isCrossRepository isMergeQueueEnabled mergeStateStatus
+      headRepositoryOwner { login }
+      headRepository { id nameWithOwner defaultBranchRef { name } }
+      headRef { target { oid } }
+      baseRef { compare(headRef: $headRef) { behindBy } }
+    }
+  }
+}`;
+
+/** T3's mutations that need the pull request's node id alone. */
+const SIMPLE_MUTATIONS: Partial<Record<PullRequestAction, string>> = {
+  draft: "convertPullRequestToDraft",
+  "disable-auto-merge": "disablePullRequestAutoMerge",
+  revert: "revertPullRequest",
+};
+const ENABLE_AUTO_MERGE = `mutation($id: ID!, $method: PullRequestMergeMethod!) {
+  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method }) { clientMutationId }
+}`;
+const UPDATE_BRANCH = `mutation($id: ID!, $head: GitObjectID!, $method: PullRequestBranchUpdateMethod!) {
+  updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: $method }) { clientMutationId }
+}`;
+const DELETE_BRANCH = `mutation($repository: ID!, $ref: GitRefname!, $before: GitObjectID!) {
+  updateRefs(input: { repositoryId: $repository, refUpdates: [{ name: $ref, beforeOid: $before, afterOid: "0000000000000000000000000000000000000000" }] }) { clientMutationId }
+}`;
+/** T3's merge state statuses in which GitHub merges at once rather than arming auto-merge. */
+const IMMEDIATELY_MERGEABLE = new Set(["CLEAN", "HAS_HOOKS", "UNSTABLE"]);
+const GRAPHQL_MERGE_METHODS: Record<PullRequestMergeMethod, string> = {
+  merge: "MERGE",
+  squash: "SQUASH",
+  rebase: "REBASE",
+};
+
+interface ActionState {
+  readonly id: string;
+  readonly state?: string;
+  readonly headRefOid?: string;
+  readonly headRefName?: string;
+  readonly baseRefName?: string;
+  readonly isCrossRepository?: boolean;
+  readonly isMergeQueueEnabled?: boolean;
+  readonly mergeStateStatus?: string;
+  readonly headRepositoryOwner?: { readonly login?: string } | null;
+  readonly headRepository?: {
+    readonly id?: string;
+    readonly nameWithOwner?: string;
+    readonly defaultBranchRef?: { readonly name?: string } | null;
+  } | null;
+  readonly headRef?: { readonly target?: { readonly oid?: string } | null } | null;
+  readonly baseRef?: { readonly compare?: { readonly behindBy?: number } | null } | null;
+}
+
+/** The pull request as GitHub has it now: merging and updating act on the head as it stands. */
+async function actionState(ghPath: string, cwd: string, url: string): Promise<ActionState> {
+  const parsed = parsePullRequestUrl(url);
+  const [owner, name] = parsed?.repository.split("/") ?? [];
+  if (parsed === undefined || owner === undefined || name === undefined) {
+    throw new GitHubUnavailable("failed", `${url} is no pull request URL`);
+  }
+  const answer = (await ghJson(ghPath, cwd, [
+    "api",
+    "graphql",
+    "--hostname",
+    parsed.host,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `name=${name}`,
+    "-F",
+    `number=${parsed.number}`,
+    "-f",
+    `headRef=refs/pull/${parsed.number}/head`,
+    "-f",
+    `query=${ACTION_STATE}`,
+  ])) as { data?: { repository?: { pullRequest?: ActionState | null } | null } } | null;
+  const state = answer?.data?.repository?.pullRequest;
+  if (state === undefined || state === null || typeof state.id !== "string") {
+    throw new GitHubUnavailable("failed", `GitHub did not find ${url}`);
+  }
+  return state;
+}
+
+/** Sends one of T3's mutations (`-f` strings, so a node id is never read as a number). */
+async function mutate(
+  ghPath: string,
+  cwd: string,
+  url: string,
+  query: string,
+  variables: Readonly<Record<string, string>>,
+): Promise<void> {
+  const host = parsePullRequestUrl(url)?.host ?? "github.com";
+  await ghJson(ghPath, cwd, [
+    "api",
+    "graphql",
+    "--hostname",
+    host,
+    ...Object.entries(variables).flatMap(([key, value]) => ["-f", `${key}=${value}`]),
+    "-f",
+    `query=${query}`,
+  ]);
+}
+
+/**
+ * T3's delete-branch: the head branch of a pull request that is no longer open, unless it is
+ * named like the base or the head repository's default branch, or moved since it was read.
+ */
+async function deleteHeadBranch(ghPath: string, cwd: string, url: string): Promise<void> {
+  const state = await actionState(ghPath, cwd, url);
+  if (state.state === "OPEN") {
+    throw new GitHubUnavailable(
+      "failed",
+      "Close or merge this pull request before deleting its branch.",
+    );
+  }
+  const branch = state.headRefName;
+  const repository = state.headRepository;
+  if (
+    branch === undefined ||
+    state.headRefOid === undefined ||
+    typeof repository?.id !== "string"
+  ) {
+    throw new GitHubUnavailable(
+      "failed",
+      "The pull request's source branch is no longer available.",
+    );
+  }
+  if (branch === state.baseRefName || branch === repository.defaultBranchRef?.name) {
+    throw new GitHubUnavailable(
+      "failed",
+      `${branch} is a protected branch of this repository and is not deleted.`,
+    );
+  }
+  // Already gone, which is what was asked for.
+  if (state.headRef === null || state.headRef === undefined) return;
+  if (state.headRef.target?.oid !== state.headRefOid) {
+    throw new GitHubUnavailable(
+      "failed",
+      `${branch} has new commits since this pull request was read; it is not deleted.`,
+    );
+  }
+  await mutate(ghPath, cwd, url, DELETE_BRANCH, {
+    repository: repository.id,
+    ref: `refs/heads/${branch}`,
+    before: state.headRefOid,
+  });
+}
+
+/**
+ * T3's approve-workflows: the runs of a fork's head that wait for a maintainer's approval.
+ * A branch of the repository itself needs none.
+ */
+async function approveWorkflows(ghPath: string, cwd: string, url: string): Promise<void> {
+  const parsed = parsePullRequestUrl(url);
+  const state = await actionState(ghPath, cwd, url);
+  if (parsed === undefined || state.isCrossRepository !== true) return;
+  const head = state.headRefOid;
+  const owner = state.headRepositoryOwner?.login?.toLowerCase();
+  if (head === undefined || owner === undefined) {
+    throw new GitHubUnavailable("failed", "The pull request's head could not be read.");
+  }
+  const where = ["api", "--hostname", parsed.host];
+  const runs = (await ghJson(ghPath, cwd, [
+    ...where,
+    `repos/${parsed.repository}/actions/runs?event=pull_request&status=action_required&head_sha=${head}&per_page=100`,
+  ])) as {
+    workflow_runs?: {
+      id?: unknown;
+      head_sha?: unknown;
+      head_branch?: unknown;
+      head_repository?: { owner?: { login?: unknown } } | null;
+    }[];
+  } | null;
+  for (const run of runs?.workflow_runs ?? []) {
+    const runOwner = run.head_repository?.owner?.login;
+    if (
+      typeof run.id !== "number" ||
+      run.head_sha !== head ||
+      run.head_branch !== state.headRefName ||
+      typeof runOwner !== "string" ||
+      runOwner.toLowerCase() !== owner
+    ) {
+      continue;
+    }
+    await ghRun(ghPath, cwd, [
+      ...where,
+      `repos/${parsed.repository}/actions/runs/${run.id}/approve`,
+      "-X",
+      "POST",
+    ]);
+  }
+}
+
+/** Runs a `git.pr.action` on GitHub as T3 does (D1451, D1661, D1662). */
+async function actOn(
+  ghPath: string,
+  cwd: string,
+  url: string,
+  action: PullRequestAction,
+  method: PullRequestMergeMethod,
+  update: PullRequestUpdateMethod | undefined,
+): Promise<void> {
+  switch (action) {
+    case "ready":
+    case "close":
+    case "reopen":
+      return ghRun(ghPath, cwd, ["pr", action, url]);
+    case "delete-branch":
+      return deleteHeadBranch(ghPath, cwd, url);
+    case "approve-workflows":
+      return approveWorkflows(ghPath, cwd, url);
+    case "merge": {
+      // A base with a merge queue takes it through auto-merge (D1662); a state that cannot be
+      // read leaves the merge to `gh`.
+      const state = await actionState(ghPath, cwd, url).catch(() => undefined);
+      if (state?.isMergeQueueEnabled !== true) {
+        return ghRun(ghPath, cwd, ["pr", "merge", url, `--${method}`]);
+      }
+      return mutate(ghPath, cwd, url, ENABLE_AUTO_MERGE, {
+        id: state.id,
+        method: GRAPHQL_MERGE_METHODS[method],
+      });
+    }
+    case "enable-auto-merge": {
+      const state = await actionState(ghPath, cwd, url);
+      // `--auto` on a pull request GitHub would merge now merges it, as `gh` does.
+      if (
+        state.isMergeQueueEnabled !== true &&
+        IMMEDIATELY_MERGEABLE.has(state.mergeStateStatus?.toUpperCase() ?? "")
+      ) {
+        return ghRun(ghPath, cwd, ["pr", "merge", url, `--${method}`]);
+      }
+      return mutate(ghPath, cwd, url, ENABLE_AUTO_MERGE, {
+        id: state.id,
+        method: GRAPHQL_MERGE_METHODS[method],
+      });
+    }
+    case "update-branch": {
+      const state = await actionState(ghPath, cwd, url);
+      if (state.baseRef?.compare?.behindBy === 0) return;
+      if (state.headRefOid === undefined) {
+        throw new GitHubUnavailable("failed", "The pull request's head could not be read.");
+      }
+      // GitHub updates with a merge commit unless asked to rebase.
+      return mutate(ghPath, cwd, url, UPDATE_BRANCH, {
+        id: state.id,
+        head: state.headRefOid,
+        method: update === "rebase" ? "REBASE" : "MERGE",
+      });
+    }
+    default: {
+      const name = SIMPLE_MUTATIONS[action];
+      if (name === undefined) {
+        throw new GitHubUnavailable("failed", `GitHub does not expose ${action} through its API.`);
+      }
+      const state = await actionState(ghPath, cwd, url);
+      return mutate(
+        ghPath,
+        cwd,
+        url,
+        `mutation($id: ID!) { ${name}(input: { pullRequestId: $id }) { clientMutationId } }`,
+        { id: state.id },
+      );
+    }
+  }
+}
+
 /** GitHub and GitHub Enterprise through `gh`, which picks the host from the repository or URL. */
 export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers): Forge {
   return {
@@ -752,14 +1040,23 @@ export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers)
     create: (input) => createPullRequest(ghPath(), cwd, input),
     templatePaths: GITHUB_TEMPLATE_PATHS,
     watch: (url) => readWatch(ghPath(), cwd, url, viewers),
-    actions: ["merge", "ready", "close", "reopen"],
+    // T3's GitHub `changeRequestActions` (D1661).
+    actions: [
+      "merge",
+      "ready",
+      "draft",
+      "close",
+      "reopen",
+      "delete-branch",
+      "update-branch",
+      "enable-auto-merge",
+      "disable-auto-merge",
+      "revert",
+      "approve-workflows",
+    ],
+    updateMethods: ["merge", "rebase"],
     checks: (url) => checksOf(ghPath(), cwd, url),
     mergeMethods: (url) => mergeMethodsOf(ghPath(), cwd, url),
-    act: (url, action, method) =>
-      ghRun(
-        ghPath(),
-        cwd,
-        action === "merge" ? ["pr", "merge", url, `--${method}`] : ["pr", action, url],
-      ),
+    act: (url, action, method, update) => actOn(ghPath(), cwd, url, action, method, update),
   };
 }

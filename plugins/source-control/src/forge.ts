@@ -10,6 +10,7 @@ import {
   type PullRequestAction,
   type PullRequestCheck,
   type PullRequestMergeMethod,
+  type PullRequestUpdateMethod,
 } from "@jhin/source-control-api";
 
 import { SpawnError, run, type RunResult } from "./git.ts";
@@ -105,8 +106,15 @@ export interface Forge {
   checks?(url: string): Promise<PullRequestCheck[]>;
   /** The merge methods the pull request's repository allows (D1450). */
   mergeMethods(url: string): Promise<PullRequestMergeMethod[]>;
-  /** Runs one of `actions` on the pull request (D1451). */
-  act(url: string, action: PullRequestAction, method: PullRequestMergeMethod): Promise<void>;
+  /** How `update-branch` may bring the base in (T3's `updateMethods`, D1661). */
+  readonly updateMethods?: readonly PullRequestUpdateMethod[];
+  /** Runs one of `actions` on the pull request (D1451, D1661). */
+  act(
+    url: string,
+    action: PullRequestAction,
+    method: PullRequestMergeMethod,
+    update?: PullRequestUpdateMethod,
+  ): Promise<void>;
 }
 
 export const PULL_REQUEST: ChangeRequestTerminology = {

@@ -90,7 +90,19 @@ describe("a GitHub pull request's details (D1449, D1450)", () => {
       },
     ]);
     expect(detail.mergeMethods).toEqual(["squash", "rebase"]);
-    expect(detail.actions).toEqual(["merge", "ready", "close", "reopen"]);
+    expect(detail.actions).toEqual([
+      "merge",
+      "ready",
+      "draft",
+      "close",
+      "reopen",
+      "delete-branch",
+      "update-branch",
+      "enable-auto-merge",
+      "disable-auto-merge",
+      "revert",
+      "approve-workflows",
+    ]);
     expect(gh.calls()).toContain(
       "repo view github.com/acme/demo --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
     );
@@ -208,7 +220,16 @@ describe("git.pr.action (D1451)", () => {
         },
       ],
       mergeMethods: ["merge", "squash"],
-      actions: ["merge", "ready", "close", "reopen"],
+      actions: [
+        "merge",
+        "ready",
+        "draft",
+        "close",
+        "reopen",
+        "update-branch",
+        "enable-auto-merge",
+        "disable-auto-merge",
+      ],
     });
     await sc.client.call("git.pr.action", { projectId, url: at, action: "ready" });
     expect(glab.calls()).toContain("mr update 5 --repo https://gitlab.com/acme/demo --ready");
@@ -224,6 +245,174 @@ describe("git.pr.action (D1451)", () => {
         action: "ready",
       }),
     ).rejects.toThrow("Bitbucket does not expose ready through its API.");
+  });
+});
+
+describe("T3's other pull request actions (D1661–D1665)", () => {
+  /** T3's PullRequestActionState as `gh api graphql` answers it. */
+  const state = (fields: Record<string, unknown> = {}) => ({
+    data: {
+      repository: {
+        pullRequest: {
+          id: "PR_7",
+          state: "OPEN",
+          headRefOid: "abc",
+          headRefName: "feature",
+          baseRefName: "main",
+          isCrossRepository: false,
+          isMergeQueueEnabled: false,
+          mergeStateStatus: "BLOCKED",
+          headRepositoryOwner: { login: "acme" },
+          headRepository: {
+            id: "R_1",
+            nameWithOwner: "acme/demo",
+            defaultBranchRef: { name: "main" },
+          },
+          headRef: { target: { oid: "abc" } },
+          baseRef: { compare: { behindBy: 2 } },
+          ...fields,
+        },
+      },
+    },
+  });
+  const github = async () => {
+    const gh = fakeGh();
+    gh.view(7, ghPullRequest());
+    const dir = repository();
+    git(dir, "remote", "add", "origin", "https://github.com/acme/demo.git");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const act = (action: string, extra: Record<string, unknown> = {}) =>
+      sc.client.call("git.pr.action", { projectId, url, action, ...extra });
+    return { gh, sc, projectId, act };
+  };
+
+  it("sends T3's mutations for a draft, a revert and turning auto-merge off", async () => {
+    const { gh, act } = await github();
+    gh.graphql(state());
+    await act("draft");
+    await act("disable-auto-merge");
+    await act("revert");
+    const sent = gh.calls().join("\n");
+    expect(sent).toContain("convertPullRequestToDraft(input: { pullRequestId: $id })");
+    expect(sent).toContain("disablePullRequestAutoMerge(input: { pullRequestId: $id })");
+    expect(sent).toContain("revertPullRequest(input: { pullRequestId: $id })");
+    expect(gh.calls().filter((call) => call.includes("-f id=PR_7"))).toHaveLength(3);
+  });
+
+  it("arms auto-merge, merges what GitHub would merge now, and queues on a merge queue (D1662)", async () => {
+    const { gh, act } = await github();
+    gh.graphql(state());
+    await act("enable-auto-merge", { mergeMethod: "squash" });
+    expect(gh.calls().join("\n")).toContain("-f id=PR_7 -f method=SQUASH -f query=mutation");
+    expect(gh.calls().join("\n")).toContain("enablePullRequestAutoMerge(input:");
+
+    gh.graphql(state({ mergeStateStatus: "CLEAN" }));
+    await act("enable-auto-merge", { mergeMethod: "squash" });
+    expect(gh.calls()).toContain(`pr merge ${url} --squash`);
+
+    // A merge into a base with a merge queue enters the queue instead of merging.
+    gh.graphql(state({ isMergeQueueEnabled: true, mergeStateStatus: "CLEAN" }));
+    const before = gh.calls().filter((call) => call.startsWith("pr merge")).length;
+    await act("merge");
+    expect(gh.calls().filter((call) => call.startsWith("pr merge"))).toHaveLength(before);
+    expect(gh.calls().join("\n")).toContain("-f id=PR_7 -f method=MERGE -f query=mutation");
+  });
+
+  it("updates a branch that is behind, with the head it read, and leaves one that is not", async () => {
+    const { gh, act } = await github();
+    gh.graphql(state({ baseRef: { compare: { behindBy: 0 } } }));
+    await act("update-branch");
+    expect(gh.calls().join("\n")).not.toContain("updatePullRequestBranch");
+    gh.graphql(state());
+    await act("update-branch", { updateMethod: "rebase" });
+    expect(gh.calls().join("\n")).toContain("-f id=PR_7 -f head=abc -f method=REBASE");
+    expect(gh.calls().join("\n")).toContain("updatePullRequestBranch(input:");
+  });
+
+  it("deletes a merged pull request's branch with T3's refusals", async () => {
+    const { gh, act } = await github();
+    gh.graphql(state());
+    await expect(act("delete-branch")).rejects.toThrow(
+      "Close or merge this pull request before deleting its branch.",
+    );
+    gh.graphql(state({ state: "MERGED", headRef: { target: { oid: "def" } } }));
+    await expect(act("delete-branch")).rejects.toThrow(
+      "feature has new commits since this pull request was read; it is not deleted.",
+    );
+    gh.graphql(state({ state: "MERGED", headRefName: "main" }));
+    await expect(act("delete-branch")).rejects.toThrow(
+      "main is a protected branch of this repository and is not deleted.",
+    );
+    expect(gh.calls().join("\n")).not.toContain("updateRefs");
+    gh.graphql(state({ state: "MERGED" }));
+    await act("delete-branch");
+    expect(gh.calls().join("\n")).toContain(
+      "-f repository=R_1 -f ref=refs/heads/feature -f before=abc",
+    );
+    // Already gone: done without asking.
+    gh.graphql(state({ state: "CLOSED", headRef: null }));
+    const sent = gh.calls().filter((call) => call.includes("-f repository=R_1")).length;
+    await act("delete-branch");
+    expect(gh.calls().filter((call) => call.includes("-f repository=R_1"))).toHaveLength(sent);
+  });
+
+  it("approves the workflow runs of a fork's head, and none of the repository's own", async () => {
+    const { gh, act } = await github();
+    gh.graphql(state());
+    await act("approve-workflows");
+    expect(gh.calls().some((call) => call.includes("actions/runs"))).toBe(false);
+    gh.graphql(state({ isCrossRepository: true, headRepositoryOwner: { login: "fork" } }));
+    gh.rest({
+      workflow_runs: [
+        {
+          id: 31,
+          head_sha: "abc",
+          head_branch: "feature",
+          head_repository: { owner: { login: "Fork" } },
+        },
+        {
+          id: 32,
+          head_sha: "old",
+          head_branch: "feature",
+          head_repository: { owner: { login: "fork" } },
+        },
+      ],
+    });
+    await act("approve-workflows");
+    expect(gh.calls()).toContain(
+      "api --hostname github.com repos/acme/demo/actions/runs/31/approve -X POST",
+    );
+    expect(gh.calls().some((call) => call.includes("runs/32/approve"))).toBe(false);
+  });
+
+  it("answers the avatar, auto-merge, update methods and the project's merge method", async () => {
+    const { gh, sc, projectId, act } = await github();
+    gh.view(
+      7,
+      ghPullRequest({
+        author: { login: "octo", name: "Octo Cat" },
+        autoMergeRequest: { mergeMethod: "SQUASH" },
+      }),
+    );
+    gh.repo({ mergeCommitAllowed: true, squashMergeAllowed: true, rebaseMergeAllowed: false });
+    let detail = await sc.client.call<PullRequestDetail>("git.pr.detail", { projectId, url });
+    expect(detail.pullRequest.author?.avatarUrl).toBe("https://github.com/octo.png?size=80");
+    expect(detail.pullRequest.autoMerge).toBe(true);
+    expect(detail.updateMethods).toEqual(["merge", "rebase"]);
+    expect(detail.defaultMergeMethod).toBeUndefined();
+    expect(detail.actions).toContain("approve-workflows");
+
+    sc.configure({ projects: { [projectId]: { pullRequestMergeMethod: "squash" } } });
+    detail = await sc.client.call<PullRequestDetail>("git.pr.detail", { projectId, url });
+    expect(detail.defaultMergeMethod).toBe("squash");
+    // A merge without a method takes the project's.
+    await act("merge");
+    expect(gh.calls()).toContain(`pr merge ${url} --squash`);
+    // One the repository does not allow falls back to D1451's rule.
+    sc.configure({ projects: { [projectId]: { pullRequestMergeMethod: "rebase" } } });
+    await act("merge");
+    expect(gh.calls()).toContain(`pr merge ${url} --merge`);
   });
 });
 
@@ -252,19 +441,36 @@ describe("the details and actions of the other forges (D1449–D1451)", () => {
       author: { username: "dev", name: "Dev", avatar_url: "https://gitlab.com/a.png" },
       changes_count: "4",
       has_conflicts: true,
+      merge_when_pipeline_succeeds: true,
     });
     glab.answer("mr update 5", {});
     glab.answer("mr merge 5", {});
+    glab.answer("mr rebase 5", {});
+    glab.answer("api --hostname gitlab.com --method POST", {});
     const forge = gitlabForge(() => "glab", site("gitlab.com", "acme/demo"), new Map());
     const at = "https://gitlab.com/acme/demo/-/merge_requests/5";
     expect(await forge.at(at)).toMatchObject({
       author: { login: "dev", name: "Dev", avatarUrl: "https://gitlab.com/a.png" },
       changedFiles: 4,
       mergeability: "conflicting",
+      autoMerge: true,
     });
     expect(await forge.mergeMethods(at)).toEqual(["squash", "rebase"]);
     await forge.act(at, "ready", "merge");
     await forge.act(at, "merge", "rebase");
+    // D1661: a draft, auto-merge on and off, and a rebase onto the base.
+    await forge.act(at, "draft", "merge");
+    await forge.act(at, "enable-auto-merge", "squash");
+    await forge.act(at, "disable-auto-merge", "merge");
+    await forge.act(at, "update-branch", "merge", "rebase");
+    expect(glab.calls()).toContain("mr update 5 --repo https://gitlab.com/acme/demo --draft");
+    expect(glab.calls()).toContain(
+      "mr merge 5 --repo https://gitlab.com/acme/demo --yes --auto-merge=true --squash",
+    );
+    expect(glab.calls()).toContain(
+      "api --hostname gitlab.com --method POST projects/acme%2Fdemo/merge_requests/5/cancel_merge_when_pipeline_succeeds",
+    );
+    expect(glab.calls()).toContain("mr rebase 5 --repo https://gitlab.com/acme/demo");
     expect(glab.calls()).toContain("mr update 5 --repo https://gitlab.com/acme/demo --ready");
     expect(glab.calls()).toContain(
       "mr merge 5 --repo https://gitlab.com/acme/demo --yes --auto-merge=false --rebase",
@@ -281,6 +487,7 @@ describe("the details and actions of the other forges (D1449–D1451)", () => {
       targetRefName: "refs/heads/main",
       createdBy: { uniqueName: "dev@acme.com", displayName: "Dev" },
       mergeStatus: "conflicts",
+      autoCompleteSetBy: { uniqueName: "dev@acme.com" },
       repository: { webUrl: "https://dev.azure.com/acme/web/_git/demo" },
     });
     az.answer("repos pr update --id 4", {});
@@ -289,9 +496,20 @@ describe("the details and actions of the other forges (D1449–D1451)", () => {
     expect(await forge.at(at)).toMatchObject({
       author: { login: "dev@acme.com", name: "Dev" },
       mergeability: "conflicting",
+      autoMerge: true,
     });
     await forge.act(at, "close", "merge");
     await forge.act(at, "merge", "squash");
+    // D1661: a draft and its auto-complete on and off.
+    await forge.act(at, "draft", "merge");
+    await forge.act(at, "enable-auto-merge", "squash");
+    await forge.act(at, "disable-auto-merge", "merge");
+    expect(az.calls()).toContainEqual(expect.stringMatching(/--draft true /));
+    expect(az.calls()).toContainEqual(expect.stringMatching(/--auto-complete true --squash true /));
+    expect(az.calls()).toContainEqual(expect.stringMatching(/--auto-complete false /));
+    await expect(forge.act(at, "revert", "merge")).rejects.toThrow(
+      "Azure DevOps does not expose revert through its API.",
+    );
     expect(az.calls()).toContainEqual(
       expect.stringMatching(
         /^repos pr update --id 4 --organization https:\/\/dev\.azure\.com\/acme --status abandoned /,
@@ -319,6 +537,7 @@ describe("the details and actions of the other forges (D1449–D1451)", () => {
     });
     tea.answer("api --method POST --data @- /repos/acme/demo/pulls/2/merge", null);
     tea.answer("api --method PATCH --data @- /repos/acme/demo/pulls/2", { number: 2 });
+    tea.answer("api --method POST /repos/acme/demo/pulls/2/update", null);
     const forge = forgejoForge(() => "tea", site("codeberg.org", "acme/demo"), new Map());
     const at = "https://codeberg.org/acme/demo/pulls/2";
     expect(await forge.at(at)).toMatchObject({
@@ -333,6 +552,8 @@ describe("the details and actions of the other forges (D1449–D1451)", () => {
     await forge.act(at, "close", "merge");
     expect(tea.calls()).toContain("api --method POST --data @- /repos/acme/demo/pulls/2/merge");
     expect(tea.calls()).toContain("api --method PATCH --data @- /repos/acme/demo/pulls/2");
+    await forge.act(at, "update-branch", "merge", "rebase");
+    expect(tea.calls()).toContain("api --method POST /repos/acme/demo/pulls/2/update?style=rebase");
   });
 
   it("Bitbucket: the diff stat summed from its diffstat, a merge strategy and a decline", async () => {

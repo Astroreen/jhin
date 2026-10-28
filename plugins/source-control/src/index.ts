@@ -39,6 +39,7 @@ import {
   PullRequestAction,
   PullRequestDetail,
   PullRequestMergeMethod,
+  PullRequestUpdateMethod,
   PullResult,
   SOURCE_CONTROL_ACTIONS_STREAM,
   PULL_REQUESTS_CAPABILITY,
@@ -233,7 +234,19 @@ const PROJECT_KEYS = [
   "branchNamingMode",
   "branchNamePrefix",
   "branchNameInstructions",
+  "pullRequestMergeMethod",
 ] as const;
+const MergeMethodSetting = z.union([
+  z.literal("merge").meta({ title: "Merge commit" }),
+  z.literal("squash").meta({ title: "Squash and merge" }),
+  z.literal("rebase").meta({ title: "Rebase and merge" }),
+]);
+// T3's pullRequestMergeMethod (D1664): unset is its "Last selected".
+const MERGE_METHOD_META = {
+  title: "Default pull request merge method",
+  description:
+    "Pull requests start with this method. Unset reuses whatever you chose most recently on each device.",
+};
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 export const Config = z
@@ -346,6 +359,7 @@ export const Config = z
     branchNamingMode: BranchNamingMode.default("static").meta(BRANCH_NAMING_MODE_META),
     branchNamePrefix: z.string().trim().default("jhin").meta(BRANCH_NAME_PREFIX_META),
     branchNameInstructions: z.string().trim().default("").meta(BRANCH_NAME_INSTRUCTIONS_META),
+    pullRequestMergeMethod: MergeMethodSetting.optional().meta(MERGE_METHOD_META),
     // T3's worktree cleanup rules (D1128), all off by default.
     worktreeCleanup: WorktreeCleanupConfig,
     // T3's projectSettingsOverrides of the settings above (D1466, config-ui.md D1462).
@@ -360,6 +374,10 @@ export const Config = z
       branchNamingMode: BranchNamingMode.optional().meta(BRANCH_NAMING_MODE_META),
       branchNamePrefix: z.string().trim().optional().meta(BRANCH_NAME_PREFIX_META),
       branchNameInstructions: z.string().trim().optional().meta(BRANCH_NAME_INSTRUCTIONS_META),
+      pullRequestMergeMethod: MergeMethodSetting.optional().meta({
+        ...MERGE_METHOD_META,
+        description: "Pull requests in this project start with this method.",
+      }),
       worktreeCleanup: ProjectWorktreeCleanup.optional(),
     }),
     writerAgent: z.string().optional().meta({
@@ -3636,7 +3654,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     name: "git.pr.detail",
     title: "Pull request detail",
     description:
-      "A pull request's details by URL: its snapshot with author, diff stat, review decision and mergeability, its head's checks one by one, the merge methods its repository allows and the actions its forge has",
+      "A pull request's details by URL: its snapshot with author, diff stat, review decision and mergeability, its head's checks one by one, the merge methods its repository allows, the actions and update methods its forge has and the project's default merge method",
     input: z.object({ projectId: z.string().min(1), url: z.string().min(1) }),
     output: PullRequestDetail,
     permissions: ["git.read"],
@@ -3662,7 +3680,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           // Without them only Merge is missing; the rest of the detail stands.
           forge.mergeMethods(url).catch((): PullRequestMergeMethod[] => []),
         ]);
-        return { pullRequest, checks, mergeMethods, actions: [...forge.actions] };
+        const defaultMergeMethod = projectConfig(projectId).pullRequestMergeMethod;
+        return {
+          pullRequest,
+          checks,
+          mergeMethods,
+          actions: [...forge.actions],
+          ...(forge.updateMethods === undefined ? {} : { updateMethods: [...forge.updateMethods] }),
+          ...(defaultMergeMethod === undefined ? {} : { defaultMergeMethod }),
+        };
       } catch (error) {
         throw forgeFailure(error, { url });
       }
@@ -3673,19 +3699,20 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     name: "git.pr.action",
     title: "Act on pull request",
     description:
-      "Merges a pull request (with mergeMethod, `merge` by default), marks a draft ready for review, closes or reopens it, by URL; every thread that links it gets its new state",
+      "Acts on a pull request by URL: merges it (with mergeMethod; the project's default, else `merge`), marks it ready or a draft, closes, reopens or reverts it, updates its branch (with updateMethod), turns auto-merge on or off, deletes its branch or approves its workflow runs; every thread that links it gets its new state",
     input: z.object({
       projectId: z.string().min(1),
       url: z.string().min(1),
       action: PullRequestAction,
       mergeMethod: PullRequestMergeMethod.optional(),
+      updateMethod: PullRequestUpdateMethod.optional(),
     }),
     output: z.object({
       /** `null` when the pull request could not be read again after the action, which was done. */
       pullRequest: PullRequest.nullable(),
     }),
     permissions: ["git.write"],
-    handler: async ({ projectId, url, action, mergeMethod }) => {
+    handler: async ({ projectId, url, action, mergeMethod, updateMethod }) => {
       const { forge, key } = await forgeOfUrl(projectId, url);
       if (!forge.actions.includes(action)) {
         throw new SourceControlError(
@@ -3694,11 +3721,23 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           { url },
         );
       }
+      if (
+        updateMethod !== undefined &&
+        action === "update-branch" &&
+        !(forge.updateMethods ?? []).includes(updateMethod)
+      ) {
+        throw new SourceControlError(
+          "ACTION_UNAVAILABLE",
+          `${forge.name} does not update a branch with ${updateMethod}.`,
+          { url },
+        );
+      }
       // A merge takes a method the repository allows: the one asked for, refused when not
-      // allowed, else "merge" when allowed, else the first allowed (T3's
-      // resolveSelectedMergeMethod).
-      let method = mergeMethod ?? "merge";
-      if (action === "merge") {
+      // allowed, else the project's (D1664), else "merge" when allowed, else the first allowed
+      // (T3's resolveSelectedMergeMethod).
+      const projectMethod = projectConfig(projectId).pullRequestMergeMethod;
+      let method = mergeMethod ?? projectMethod ?? "merge";
+      if (action === "merge" || action === "enable-auto-merge") {
         const allowed = await forge.mergeMethods(url).catch(() => undefined);
         if (allowed !== undefined && !allowed.includes(method)) {
           if (mergeMethod !== undefined || allowed.length === 0) {
@@ -3708,11 +3747,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               { url },
             );
           }
-          method = allowed[0]!;
+          method = allowed.includes("merge") ? "merge" : allowed[0]!;
         }
       }
       try {
-        await forge.act(url, action, method);
+        await forge.act(url, action, method, updateMethod);
       } catch (error) {
         throw forgeFailure(error, { url, action });
       }

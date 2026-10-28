@@ -343,7 +343,9 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
       ".github/pull_request_template.md",
       "docs/pull_request_template.md",
     ],
-    actions: ["merge", "close", "reopen"],
+    // T3's Forgejo `changeRequestActions` that Jhin runs (D1661).
+    actions: ["merge", "close", "reopen", "update-branch"],
+    updateMethods: ["merge", "rebase"],
     // T3's Forgejo merge capabilities: the repository's `allow_*` flags (D1450).
     mergeMethods: async (url) => {
       const { repository = site.repository } = numberedReference(url, forge, 2, site.host);
@@ -354,12 +356,14 @@ export function forgejoForge(teaPath: () => string, site: ForgeSite, viewers: Vi
         ...(raw["allow_rebase"] !== false ? (["rebase"] as const) : []),
       ];
     },
-    // T3's `POST pulls/<n>/merge` and `PATCH pulls/<n>` (D1451).
-    act: async (url, action, method) => {
+    // T3's `POST pulls/<n>/merge`, `PATCH pulls/<n>` and `POST pulls/<n>/update` (D1451, D1661).
+    act: async (url, action, method, update) => {
       const { repository = site.repository, number } = numberedReference(url, forge, 2, site.host);
       const path = `/repos/${repository}/pulls/${number}`;
       if (action === "merge") {
         await tea(`${path}/merge`, { method: "POST", body: { Do: method }, empty: true });
+      } else if (action === "update-branch") {
+        await tea(`${path}/update?style=${update ?? "merge"}`, { method: "POST", empty: true });
       } else if (action === "close" || action === "reopen") {
         await tea(path, {
           method: "PATCH",

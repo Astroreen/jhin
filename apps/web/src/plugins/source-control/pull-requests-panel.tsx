@@ -2,13 +2,15 @@
 // apps/web/src/components/pullRequest/ThreadPullRequestsPanel.tsx (its rows, menu, empty
 // state and footer, the speed mode under Shift, a row's drag into the composer and the
 // virtualized list), PullRequestListRow.tsx (a row's two lines, its author and glyph) and
-// PullRequestSpeedActions.tsx (the quick actions). A chunk of its own (D440), loaded when the
-// panel first opens. docs/plans/source-control.md, D1281, D1452–D1455, D1457.
+// PullRequestSpeedActions.tsx (the quick actions); the menu's pull request actions are
+// pull-request-menu.tsx. A chunk of its own (D440), loaded when the panel first opens.
+// docs/plans/source-control.md, D1281, D1452–D1455, D1457, D1663, D1664.
 import type { NodeTarget, RightPanelSurfaceProps } from "@jhin/client-api";
 import type {
   PullRequestAction,
   PullRequestCheck,
   PullRequestDetail,
+  PullRequestMergeMethod,
   ThreadPullRequest,
 } from "@jhin/source-control-api";
 import { LegendList } from "@legendapp/list/react";
@@ -60,11 +62,13 @@ import {
   ACTION_FAILURE_LABELS,
   ACTION_SUCCESS_LABELS,
   FORGE_ACTIONS,
+  lastSelectedMergeMethod,
   pullRequestQuickActions,
   readableFailure,
-  resolveSelectedMergeMethod,
+  resolvePullRequestMergeMethod,
   type QuickAction,
 } from "../../lib/pull-request-detail.ts";
+import { usePullRequestMenuActions } from "./pull-request-menu.tsx";
 import { useShortcutModifierState } from "../../lib/shortcut-modifiers.ts";
 import {
   PullRequestChecksPopover,
@@ -114,8 +118,16 @@ interface RowActions {
   unlink(link: ThreadPullRequest): void;
   /** The head's checks one by one, for the checks popover (`git.pr.detail`); absent without a project. */
   checks?: ((link: ThreadPullRequest) => Promise<readonly PullRequestCheck[]>) | undefined;
-  /** Runs a quick action (`git.pr.action`); absent without a project. */
-  act?: ((link: ThreadPullRequest, action: QuickAction) => Promise<void>) | undefined;
+  /** Runs an action (`git.pr.action`) with its toasts; absent without a project. */
+  act?:
+    | ((
+        link: ThreadPullRequest,
+        action: PullRequestAction,
+        mergeMethod?: PullRequestMergeMethod,
+      ) => Promise<void>)
+    | undefined;
+  /** The pull request's detail (`git.pr.detail`), for the menu's actions (D1663). */
+  detail?: ((link: ThreadPullRequest) => Promise<PullRequestDetail>) | undefined;
   /** Opens a check's details. */
   openUrl?: ((url: string) => void) | undefined;
 }
@@ -211,6 +223,14 @@ function LinkRowImpl({
       ? []
       : pullRequestQuickActions(snapshot, FORGE_ACTIONS[forge]);
   const { checks: loadChecks } = actions;
+  const menuAccess = useMemo(
+    () =>
+      actions.act === undefined || actions.detail === undefined
+        ? undefined
+        : { act: actions.act, detail: actions.detail },
+    [actions.act, actions.detail],
+  );
+  const menuActions = usePullRequestMenuActions(link, menuOpen, menuAccess);
   return (
     <div
       className={cn(ROW_CLASS, "relative hover:bg-accent/60")}
@@ -406,6 +426,7 @@ function LinkRowImpl({
             side="bottom"
             sideOffset={menuPosition ? 0 : 4}
           >
+            {menuActions.leading}
             <MenuItem onClick={() => actions.copy(link)}>
               <LinkIcon className="size-3.5" />
               Copy link
@@ -424,9 +445,11 @@ function LinkRowImpl({
               <UnlinkIcon className="size-3.5" />
               Unlink from thread
             </MenuItem>
+            {menuActions.trailing}
           </MenuPopup>
         </Menu>
       </span>
+      {menuActions.dialog}
     </div>
   );
 }
@@ -552,18 +575,27 @@ export function createPullRequestsPanel(
       const detail = (link: ThreadPullRequest) =>
         threads.call<PullRequestDetail>(target, "git.pr.detail", { projectId, url: link.url });
       /** T3's usePullRequestActionRunner: the action, then its toast. */
-      const act = async (link: ThreadPullRequest, action: PullRequestAction) => {
+      const act = async (
+        link: ThreadPullRequest,
+        action: PullRequestAction,
+        chosen?: PullRequestMergeMethod,
+      ) => {
         try {
-          // T3 resolves a merge's method on the click, not for every row in view.
+          // T3 resolves a merge's method on the click, not for every row in view: the
+          // project's, else the last one chosen on this device (D1664).
           const mergeMethod =
-            action === "merge"
-              ? await detail(link).then(({ mergeMethods }) => {
+            action === "merge" && chosen === undefined
+              ? await detail(link).then(({ mergeMethods, defaultMergeMethod }) => {
                   if (mergeMethods.length === 0) {
                     throw new Error("No merge method is available for this repository.");
                   }
-                  return resolveSelectedMergeMethod(mergeMethods);
+                  return resolvePullRequestMergeMethod(
+                    mergeMethods,
+                    defaultMergeMethod,
+                    lastSelectedMergeMethod(),
+                  );
                 })
-              : undefined;
+              : chosen;
           await threads.call(target, "git.pr.action", {
             projectId,
             url: link.url,
@@ -588,6 +620,7 @@ export function createPullRequestsPanel(
         checks:
           projectId === undefined ? undefined : (link) => detail(link).then(({ checks }) => checks),
         act: projectId === undefined ? undefined : act,
+        detail: projectId === undefined ? undefined : detail,
         openUrl,
       };
       // oxlint-disable-next-line react-hooks/exhaustive-deps -- the target's parts are its identity
