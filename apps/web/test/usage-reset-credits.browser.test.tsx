@@ -3,6 +3,7 @@
 // page read the limits again.
 import type { AgentResetCredits } from "@jhin/agent-api";
 import type { ThreadsCatalog } from "@jhin/client-api";
+import type { Logger } from "@jhin/sdk";
 import { DialogHost, createDialogs } from "@jhin/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,6 +39,14 @@ const account: LimitAccount = {
 async function render(threads: ThreadsCatalog, credits: AgentResetCredits) {
   const dialogs = createDialogs();
   const redeemed: string[] = [];
+  const warned: string[] = [];
+  const log: Logger = {
+    debug() {},
+    info() {},
+    warn: (message) => warned.push(message),
+    error() {},
+    child: () => log,
+  };
   const host = document.createElement("div");
   document.body.append(host);
   const root: Root = createRoot(host);
@@ -49,6 +58,7 @@ async function render(threads: ThreadsCatalog, credits: AgentResetCredits) {
             account={account}
             credits={shown}
             dialogs={dialogs}
+            log={log}
             now={NOW}
             redeemed={() => redeemed.push("read again")}
             showName={false}
@@ -63,7 +73,7 @@ async function render(threads: ThreadsCatalog, credits: AgentResetCredits) {
     await act(async () => root.unmount());
     host.remove();
   };
-  return { show, redeemed };
+  return { show, redeemed, warned };
 }
 
 describe("the Usage page's reset credits (D1655, D1656)", () => {
@@ -123,7 +133,7 @@ describe("the Usage page's reset credits (D1655, D1656)", () => {
     const threads = {
       call: () => Promise.reject(new Error("Codex could not redeem the reset credit.")),
     } as unknown as ThreadsCatalog;
-    const { show, redeemed } = await render(threads, { availableCount: 0 });
+    const { show, redeemed, warned } = await render(threads, { availableCount: 0 });
     await expect.element(page.getByText("No reset credits banked")).not.toBeInTheDocument();
 
     await show({ availableCount: 2 });
@@ -133,6 +143,8 @@ describe("the Usage page's reset credits (D1655, D1656)", () => {
     await expect
       .element(page.getByRole("status"))
       .toHaveTextContent("Could not use the reset credit.");
+    // The cause goes to the log.
+    expect(warned).toEqual(["could not use a reset credit"]);
     expect(redeemed).toEqual(["read again"]);
   });
 });

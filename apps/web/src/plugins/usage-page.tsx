@@ -169,6 +169,7 @@ export function ResetCredits(props: {
   readonly showName: boolean;
   readonly threads: ThreadsCatalog;
   readonly dialogs: Dialogs | undefined;
+  readonly log: Logger;
   /** The redemption ended: the page reads the limits again. */
   readonly redeemed: () => void;
 }) {
@@ -193,7 +194,12 @@ export function ResetCredits(props: {
         { agentId: account.agentId },
       );
       setStatus(OUTCOME_TEXT[outcome]);
-    } catch {
+    } catch (error) {
+      // T3's one line for any failure; the cause goes to the log.
+      props.log.warn("could not use a reset credit", {
+        agentId: account.agentId,
+        error: String(error),
+      });
       setStatus("Could not use the reset credit.");
     } finally {
       setBusy(false);
@@ -231,6 +237,7 @@ function PoolSection(props: {
   readonly now: number;
   readonly threads: ThreadsCatalog;
   readonly dialogs: Dialogs | undefined;
+  readonly log: Logger;
   readonly redeemed: () => void;
 }) {
   const { pool } = props;
@@ -250,6 +257,7 @@ function PoolSection(props: {
             credits={account.limits.resetCredits}
             dialogs={props.dialogs}
             key={account.key}
+            log={props.log}
             now={props.now}
             redeemed={props.redeemed}
             showName={pool.accounts.length > 1}
@@ -354,6 +362,7 @@ export function UsagePage(props: UsagePageProps) {
                 <PoolSection
                   dialogs={dialogs}
                   key={pool.agentId}
+                  log={log}
                   now={read.now}
                   pool={pool}
                   redeemed={load}
