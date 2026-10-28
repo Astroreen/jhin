@@ -854,7 +854,7 @@ test("draws on and marks a region of a tab the app hosts, each an annotation wit
               y,
               button: "left",
               // The button held, as a real drag reports it.
-              modifiers: ["leftButtonDown"],
+              modifiers: ["leftbuttondown"],
             });
           guest.sendInputEvent({
             type: "mouseUp",
