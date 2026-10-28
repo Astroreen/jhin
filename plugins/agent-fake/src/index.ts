@@ -31,6 +31,8 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/limit" fails the turn on a usage limit that resets in two hours (providers.md D1143);
  * - "/think …" reasons first, then answers;
  * - "/tool <command>" runs a pretend command and reports its output;
+ * - "/mcp <tool> …" calls each of the node's MCP tools by name (`mcp__jhin__<tool>`), pretending
+ *   they completed; a tool ending in "!" fails (preview.md D1681);
  * - "/approve <command>" asks for approval before running it;
  * - "/goal <objective>" sets a paused goal, "/goal resume" completes it, "/goal clear" clears it;
  * - "/access <app>" asks for an app's access (T3's MCP elicitation, no session allowance);
@@ -257,6 +259,26 @@ export function fakeTurn(
       await Fs.writeFile(path, `${words.join(" ")}\n`);
       yield { kind: "tool.completed", itemId, status: "completed" };
       yield* say(`Wrote ${file}`);
+      return;
+    }
+    if (/^\/mcp(\s|$)/.test(text)) {
+      const tools = text
+        .replace(/^\/mcp\s*/, "")
+        .split(/\s+/)
+        .filter(Boolean);
+      for (const entry of tools) {
+        const tool = entry.replace(/!$/, "");
+        const itemId = nextId();
+        yield {
+          kind: "tool.started",
+          itemId,
+          tool: { name: `mcp__jhin__${tool}`, kind: "mcp", title: `jhin: ${tool}` },
+        };
+        yield entry.endsWith("!")
+          ? { kind: "tool.completed", itemId, status: "failed", error: `${tool} failed` }
+          : { kind: "tool.completed", itemId, status: "completed", output: "ok" };
+      }
+      yield* say(`Called ${tools.length} tools`);
       return;
     }
     if (text.startsWith("/tool")) {

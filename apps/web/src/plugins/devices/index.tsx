@@ -1,4 +1,5 @@
 import {
+  CHAT_TOOLS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
   NAVIGATION_CAPABILITY,
   RIGHT_PANEL_CAPABILITY,
@@ -9,6 +10,7 @@ import {
   type RightPanel,
   type RightPanelSurfaceProps,
   type ThreadsCatalog,
+  type ChatTools,
 } from "@jhin/client-api";
 import { DEVICES_STREAM, DeviceEvents, type DeviceState } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
@@ -35,6 +37,7 @@ import { createDismissedDevices } from "./dismissed.ts";
 import { DeviceHostsSection } from "./hosts-settings.tsx";
 import type { DevicePanelProps } from "./panel.tsx";
 import { AndroidIcon, AppleIcon } from "./platform-icons.tsx";
+import { describeDeviceTools } from "./tool-presentations.ts";
 
 /** A device's surface resource (D1427): its host and id, as T3's `device:<host>:<id>`. */
 const deviceResource = (device: { hostId: string; deviceId: string }): string =>
@@ -154,6 +157,8 @@ export const devicePanelPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [RIGHT_PANEL_CAPABILITY]: "^1",
       [UI_SETTINGS_CAPABILITY]: "^1",
+      // The device tools in the work log (D1681).
+      [CHAT_TOOLS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -162,6 +167,11 @@ export const devicePanelPlugin = builtin(
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      const chatTools = context.services.tryGet<ChatTools>(CHAT_TOOLS_CAPABILITY);
+      if (chatTools !== undefined) {
+        for (const described of describeDeviceTools(chatTools))
+          context.subscriptions.add(described);
+      }
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const rightPanel = context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY);
       const states = context.subscriptions.add(createDeviceStates(connections));

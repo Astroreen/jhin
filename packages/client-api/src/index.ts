@@ -431,6 +431,43 @@ export interface ChatDrafts {
 }
 
 /**
+ * `chat.tools@1`: how the work log names an agent's calls of a node command
+ * (preview.md D1681, T3's `t3McpToolPresentation.ts`).
+ */
+export const CHAT_TOOLS_CAPABILITY = "chat.tools";
+
+/**
+ * The calls of several commands counted as one part of a work log summary
+ * (D1682): "Used browser 3 times", or "Tried to use browser 3 times" when none completed.
+ */
+export interface ChatToolGroup {
+  /** Calls of commands with the same group id are counted together: `browser`. */
+  readonly id: string;
+  /** The summary's verb: "Used". */
+  readonly past: string;
+  /** The verb after "Tried to" when no call completed: "use". */
+  readonly infinitive: string;
+  /** What the verb takes, for the calls counted: "browser 3 times". */
+  readonly object: (count: number) => string;
+  /** A React component, for the calls' rows and a summary of them alone. */
+  readonly icon?: (props: ModeIconProps) => unknown;
+}
+
+export interface ChatToolPresentation {
+  /**
+   * T3's labels, action, running, completed and detail: `["Click", "Clicking", "Clicked",
+   * "in the preview browser"]` reads "Clicking in the preview browser" while it runs.
+   */
+  readonly labels: readonly [action: string, running: string, completed: string, detail: string];
+  readonly group: ChatToolGroup;
+}
+
+export interface ChatTools {
+  /** Describes the calls of a node command (`preview.click`) for the work log. */
+  describe(command: string, presentation: ChatToolPresentation): Disposable;
+}
+
+/**
  * `client.thread-work@1`: work a thread waits on between its turns, as T3
  * Code's pending background tasks (a watched pull request, a background
  * subagent). Plugins register sources; the sidebar shows a thread with such

@@ -24,6 +24,7 @@ import type { ComposerDraft, Drafts } from "../../lib/composer.ts";
 import type { ModelOptionsMemory } from "../../lib/model-options.ts";
 import type { AttachmentUrls } from "../../lib/uploads.ts";
 import type { DetailsVisibility } from "./thread-details.tsx";
+import type { ToolPresentations } from "./tool-presentations.ts";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
@@ -145,6 +146,8 @@ export interface ChatServices {
   readonly threadDetails: DetailsVisibility;
   /** What this device keeps of the threads it read (loading.md D1588); absent without a provider. */
   readonly historyCache: HistoryCache | undefined;
+  /** The node commands other plugins describe for the work log (`chat.tools@1`, preview.md D1681). */
+  readonly tools: ToolPresentations;
 }
 
 /**

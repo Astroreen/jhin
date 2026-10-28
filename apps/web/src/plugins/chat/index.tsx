@@ -3,6 +3,7 @@
 import { AssistantCitationSchema, MessageContextRecordSchema } from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
+  CHAT_TOOLS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
@@ -28,6 +29,7 @@ import {
   type ThreadVisits,
   type HistoryCache,
   type ChatDrafts,
+  type ChatTools,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -99,6 +101,7 @@ import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
+import { createToolPresentations } from "./tool-presentations.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
 import { looksLikePairingCode, parsePairingUrl, rpcUrl } from "../../lib/session.ts";
 
@@ -329,7 +332,7 @@ const FilePanel = lazyChunk<FilePanelProps>(
 export const chatPlugin = builtin(
   "jhin.chat",
   {
-    provides: { [CHAT_DRAFTS_CAPABILITY]: "1.1.0" },
+    provides: { [CHAT_DRAFTS_CAPABILITY]: "1.1.0", [CHAT_TOOLS_CAPABILITY]: "1.0.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
@@ -395,6 +398,9 @@ export const chatPlugin = builtin(
           draftsFeed?.dispose();
         },
       });
+      // How the work log names other plugins' commands (preview.md D1681).
+      const tools = createToolPresentations();
+      context.services.provide<ChatTools>(CHAT_TOOLS_CAPABILITY, tools);
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {
@@ -421,6 +427,7 @@ export const chatPlugin = builtin(
         threadFind: { current: undefined },
         threadDetails: createDetailsVisibility(),
         historyCache,
+        tools,
       };
 
       function Routed() {

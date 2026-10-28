@@ -1,4 +1,9 @@
-import type { ChatTurnItemProps } from "@jhin/client-api";
+import {
+  CHAT_TOOLS_CAPABILITY,
+  type ChatToolGroup,
+  type ChatTools,
+  type ChatTurnItemProps,
+} from "@jhin/client-api";
 import { HtmlRenderEvents, type HtmlRenderedPayload } from "@jhin/preview-api";
 import { definePlugin } from "@jhin/sdk";
 import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
@@ -24,6 +29,25 @@ const Frame = lazyChunk<{ page: HtmlRenderedPayload }>(
   },
 );
 
+const pages = (count: number) => `${count} HTML ${count === 1 ? "page" : "pages"}`;
+
+// T3's labels and summaries of `html_preview` and `html_render` (MIT, see THIRD_PARTY_NOTICES.md:
+// packages/shared/src/t3McpToolPresentation.ts, client-runtime's t3ToolSummary.ts; preview.md D1681).
+const PREVIEW_LABELS = ["Preview", "Previewing", "Previewed", "an HTML page"] as const;
+const RENDER_LABELS = ["Render", "Rendering", "Rendered", "an HTML page"] as const;
+const PREVIEWED: ChatToolGroup = {
+  id: "html-preview",
+  past: "Previewed",
+  infinitive: "preview",
+  object: pages,
+};
+const RENDERED: ChatToolGroup = {
+  id: "html-render",
+  past: "Rendered",
+  infinitive: "render",
+  object: pages,
+};
+
 function readPayload(payload: unknown): HtmlRenderedPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = payload as Partial<HtmlRenderedPayload>;
@@ -41,10 +65,20 @@ function readPayload(payload: unknown): HtmlRenderedPayload | undefined {
  */
 export const htmlRenderViewPlugin = builtin(
   "jhin.html-render-view",
-  { requires: { [UI_SLOTS_CAPABILITY]: "^1" } },
+  // The tools in the work log (D1681).
+  { requires: { [UI_SLOTS_CAPABILITY]: "^1" }, optional: { [CHAT_TOOLS_CAPABILITY]: "^1" } },
   definePlugin({
     activate(context) {
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
+      const chatTools = context.services.tryGet<ChatTools>(CHAT_TOOLS_CAPABILITY);
+      if (chatTools !== undefined) {
+        context.subscriptions.add(
+          chatTools.describe("html.preview", { labels: PREVIEW_LABELS, group: PREVIEWED }),
+        );
+        context.subscriptions.add(
+          chatTools.describe("html.render", { labels: RENDER_LABELS, group: RENDERED }),
+        );
+      }
       function RenderedPage({ event }: ChatTurnItemProps) {
         if (event.type !== HtmlRenderEvents.rendered) return null;
         const page = readPayload(event.payload);

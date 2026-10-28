@@ -1107,6 +1107,35 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
   node is one environment here: T3's grouping of several environments'
   hosts is not ported.
 
+### The preview's tools in the work log (W47)
+
+- **D1681. The work log names the preview's tools as T3 does** (T3's
+  `t3McpToolPresentation.ts` and `work-log/presentation.ts`). A client
+  plugin describes the node commands it owns through a new client capability,
+  `chat.tools@1` (`ChatTools.describe(command, presentation)`, a disposable,
+  provided by `jhin.chat`): T3's four labels (action, running, completed,
+  detail) and a group. A tool call is a command's when its name is the
+  command's MCP tool (`preview_click` for `preview.click`) behind the node's
+  `jhin` server, with any of the agents' prefixes (Claude's `mcp__jhin__`,
+  Codex's `jhin.`, OpenCode's `jhin_`). Its row then reads as T3's:
+  "Clicking in the preview browser" while it runs, "Clicked in the preview
+  browser", "Failed to click in the preview browser", "Declined to click in
+  the preview browser", with the group's icon. `jhin.preview-panel` describes
+  the agent's browser tools with T3's labels (its `preview_*`, and
+  `t3_preview_list` and `t3_preview_close` for `preview.list` and
+  `preview.close`) in the group `browser`; `jhin.device-panel` describes
+  `device.list`, `device.open`, `device.screenshot` and `device.close` in
+  `device`; `jhin.html-render-view` describes `html.preview` and
+  `html.render` in groups of their own.
+- **D1682. A group's summary counts its calls**, as T3's
+  `summarizeT3ToolCalls`: "Used browser 3 times", "Used device controls 2
+  times", "Previewed 1 HTML page", "Rendered 2 HTML pages". It counts the
+  calls that completed when any did, and says "Tried to use browser 2 times"
+  when none did. The group takes the place of the "Used N tools" those calls
+  fell into, with the same priority among a summary's two parts. A summary
+  whose calls are all of one group shows the group's icon (T3's
+  `toolGroupSummaryKind`), unless one failed.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -1185,7 +1214,6 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
 - The picture-in-picture window proven in Safari and Firefox (D1327): it
   asks as T3 does, after `play()` and the metadata, and only Chromium runs
   the tests.
-- T3's work-log presentation of preview tools ("Used browser N times").
 - Reading password values in isolated worlds of out-of-process frames: Jhin
   reads them in each frame's own world.
 - T3's outline of a rendered page's boxes for the loading skeleton.

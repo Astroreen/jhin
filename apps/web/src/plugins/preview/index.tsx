@@ -3,6 +3,7 @@
 // packages/shared/src/keybindings.ts (preview.toggle, preview.refresh, preview.focusUrl),
 // apps/web/src/lib/previewFocus.ts and components/preview/useAgentOpenedPreviews.ts.
 import {
+  CHAT_TOOLS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
@@ -12,6 +13,7 @@ import {
   rightPanelSurfaceId,
   targetKey,
   type ChatHeaderActionProps,
+  type ChatTools,
   type ChatThreadOverlayProps,
   type Connections,
   type DeviceSettings,
@@ -64,6 +66,7 @@ import { prefetchWhenIdle } from "../../lib/idle-prefetch.ts";
 import type { BrowserPanelProps, BrowserSurfaceViewProps, PanelServices } from "./panel.tsx";
 import { NEW_TAB, tabTitle } from "./tab-title.ts";
 import { browserSurfaceResources, releaseBrowserTabs } from "./surfaces.ts";
+import { describePreviewTools } from "./tool-presentations.ts";
 import type { MiniPlayerProps } from "./mini-player.tsx";
 import { createMiniPlayers, type MiniPlayerState } from "./mini-player-store.ts";
 import { DesktopWebviews } from "./desktop-webviews.tsx";
@@ -176,6 +179,8 @@ export const previewPanelPlugin = builtin(
       [DESKTOP_SHELL_CAPABILITY]: "^1.1",
       // Each browser tab as a surface of the right panel (t3-parity.md D1424).
       [RIGHT_PANEL_CAPABILITY]: "^1",
+      // The agent's browser tools in the work log (D1681).
+      [CHAT_TOOLS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -208,6 +213,11 @@ export const previewPanelPlugin = builtin(
           desktopShell()?.preview?.clearPartition(previewProfilePartition(profileId)),
         use: () => useSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
       };
+      const chatTools = context.services.tryGet<ChatTools>(CHAT_TOOLS_CAPABILITY);
+      if (chatTools !== undefined) {
+        for (const described of describePreviewTools(chatTools))
+          context.subscriptions.add(described);
+      }
       // The browser panel is fetched while the page is idle (D1596).
       context.subscriptions.add(prefetchWhenIdle(BrowserPanel.preload));
       const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);

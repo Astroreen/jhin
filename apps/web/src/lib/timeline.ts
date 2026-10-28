@@ -14,6 +14,7 @@ import {
   type ToolCall,
   type TurnAttachment,
 } from "@jhin/agent-api";
+import type { ChatToolGroup, ChatToolPresentation } from "@jhin/client-api";
 import type { StoredEvent } from "@jhin/storage-api";
 
 type TurnState = "running" | "completed" | "interrupted" | "failed";
@@ -716,6 +717,28 @@ export function foldsBeforeFinal(turn: TimelineTurn): boolean {
 
 type SummaryAction = "read" | "edit" | "command" | "web" | "code-search" | "request" | "other";
 
+/** How the work log names a call of a described node command (`chat.tools@1`, preview.md D1681). */
+export type PresentTool = (tool: ToolCall) => ChatToolPresentation | undefined;
+
+const presentNothing: PresentTool = () => undefined;
+
+/** The node's MCP server, as `@jhin/mcp-api`'s MCP_SERVER_NAME names it to the agents. */
+const MCP_SERVER = "jhin";
+
+/**
+ * The node's MCP tool a call names (`preview_click`), under any agent's prefix: Claude's
+ * `mcp__jhin__preview_click`, Codex's `jhin.preview_click`, OpenCode's `jhin_preview_click` (D1681).
+ */
+export function mcpToolOf(name: string): string | undefined {
+  const claude = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (claude !== null) return claude[1] === MCP_SERVER ? claude[2] : undefined;
+  for (const separator of [".", "_"]) {
+    const prefix = `${MCP_SERVER}${separator}`;
+    if (name.startsWith(prefix) && name.length > prefix.length) return name.slice(prefix.length);
+  }
+  return undefined;
+}
+
 function actionOf(entry: WorkEntry): SummaryAction {
   if (entry.kind === "request") return "request";
   if (entry.kind !== "tool") return "other";
@@ -754,13 +777,28 @@ function actionLabel(action: SummaryAction, count: number): string {
   }
 }
 
-const actionPriority = (action: SummaryAction) =>
+/** T3's `summarizeT3ToolCalls`: the calls that completed, or all of them "Tried to" (D1682). */
+function groupLabel(group: ChatToolGroup, entries: readonly WorkEntry[]): string {
+  const completed = entries.filter(
+    (entry) => entry.kind === "tool" && entry.status === "completed",
+  );
+  const counted = completed.length > 0 ? completed : entries;
+  const verb = completed.length > 0 ? group.past : `Tried to ${group.infinitive}`;
+  return `${verb} ${group.object(counted.length)}`;
+}
+
+const actionPriority = (action: SummaryAction | undefined) =>
   action === "command" || action === "edit" ? 0 : action === "other" ? 2 : 1;
 
 /** "Ran 2 commands and read 3 files", "Thought (×2)": the header of a group of work entries. */
-export function summarizeWork(entries: readonly WorkEntry[]): {
+export function summarizeWork(
+  entries: readonly WorkEntry[],
+  present: PresentTool = presentNothing,
+): {
   summary: string;
   hasFailure: boolean;
+  /** The described group every call belongs to, for the header's icon (D1682). */
+  group?: ChatToolGroup;
 } {
   const work = entries.filter((entry) => entry.kind !== "reasoning");
   if (entries.length > 0 && work.length === 0) {
@@ -769,18 +807,40 @@ export function summarizeWork(entries: readonly WorkEntry[]): {
       hasFailure: false,
     };
   }
-  const groups = new Map<SummaryAction, WorkEntry[]>();
+  // Calls of described commands count by their group, the rest by what they did.
+  const groups = new Map<
+    string,
+    { action?: SummaryAction; group?: ChatToolGroup; entries: WorkEntry[] }
+  >();
   for (const entry of work) {
-    const action = actionOf(entry);
-    groups.set(action, [...(groups.get(action) ?? []), entry]);
+    const group = entry.kind === "tool" ? present(entry.tool)?.group : undefined;
+    const action = group === undefined ? actionOf(entry) : undefined;
+    const key = group === undefined ? `action:${action}` : `group:${group.id}`;
+    const current = groups.get(key);
+    if (current === undefined)
+      groups.set(key, {
+        ...(action === undefined ? {} : { action }),
+        ...(group === undefined ? {} : { group }),
+        entries: [entry],
+      });
+    else current.entries.push(entry);
   }
-  const summaries = [...groups].map(([action, group], index) => {
+  const summaries = [...groups.values()].map((entry, index) => {
+    const { action, group } = entry;
     // Edits count files, not edits.
     const count =
       action === "edit"
-        ? new Set(group.map((entry) => (entry.kind === "tool" ? entry.tool.detail : ""))).size
-        : group.length;
-    return { action, index, count: group.length, label: actionLabel(action, count) };
+        ? new Set(entry.entries.map((item) => (item.kind === "tool" ? item.tool.detail : ""))).size
+        : entry.entries.length;
+    return {
+      action,
+      index,
+      count: entry.entries.length,
+      label:
+        group === undefined
+          ? actionLabel(action ?? "other", count)
+          : groupLabel(group, entry.entries),
+    };
   });
   const selected = summaries
     .toSorted((a, b) => actionPriority(a.action) - actionPriority(b.action) || a.index - b.index)
@@ -797,16 +857,30 @@ export function summarizeWork(entries: readonly WorkEntry[]): {
     sentence.length < 3
       ? sentence.join(" and ")
       : `${sentence.slice(0, -1).join(", ")}, and ${sentence.at(-1)}`;
+  const only = groups.size === 1 ? [...groups.values()][0]!.group : undefined;
   return {
     summary,
     hasFailure: work.some((entry) => entry.kind === "tool" && entry.status === "failed"),
+    ...(only === undefined ? {} : { group: only }),
   };
+}
+
+/** T3's verb for a described call in each state: "Clicking", "Clicked", "Failed to click". */
+function presentedLabel(presentation: ChatToolPresentation, status: ToolItem["status"]): string {
+  const [action, running, completed, detail] = presentation.labels;
+  const verb =
+    status === "running"
+      ? running
+      : status === "completed"
+        ? completed
+        : `${status === "failed" ? "Failed" : "Declined"} to ${action.toLowerCase()}`;
+  return `${verb} ${detail}`;
 }
 
 const firstWord = (line: string) => line.trim().split(/\s+/)[0] ?? "";
 
 /** The one-line label of a work entry: "Ran npm", "Running npm", "Edited src/a.ts", "Thought". */
-export function workEntryLabel(entry: WorkEntry): string {
+export function workEntryLabel(entry: WorkEntry, present: PresentTool = presentNothing): string {
   if (entry.kind === "reasoning") {
     const preview = entry.text.replace(/\s+/g, " ").trim();
     return preview === "" ? (entry.completed ? "Thought" : "Thinking") : preview;
@@ -827,6 +901,8 @@ export function workEntryLabel(entry: WorkEntry): string {
     return entry.request.questions.map((question) => question.question).join(" · ");
   }
   const { tool } = entry;
+  const presentation = present(tool);
+  if (presentation !== undefined) return presentedLabel(presentation, entry.status);
   if (tool.kind === "command") {
     const program = firstWord(tool.detail ?? "") || tool.name;
     switch (entry.status) {
