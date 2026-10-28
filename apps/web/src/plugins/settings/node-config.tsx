@@ -62,8 +62,6 @@ import {
   type ScopeProject,
 } from "./project-scope.tsx";
 
-export type { ConfigRead };
-
 interface Outcome {
   readonly node: string;
   readonly status: "applied" | "conflict" | "queued" | "failed";

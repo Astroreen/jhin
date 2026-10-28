@@ -291,7 +291,6 @@ export const settingsPlugin = builtin(
           window.addEventListener("keydown", onKeyDown);
           return () => window.removeEventListener("keydown", onKeyDown);
         }, [route.panel]);
-        if (route.panel !== "settings") return null;
         const current = list.find((section) => section.id === route.section) ?? list[0];
         const Section = current?.component;
         const outline = useSyncExternalStore(outlines.subscribe, outlines.all).get(
@@ -303,7 +302,7 @@ export const settingsPlugin = builtin(
         const entries = outline?.entries ?? [];
         const anchorEntry = entries.find((entry) => anchorOf(entry.id) === route.anchor)?.id;
         useEffect(() => {
-          if (outline === undefined || current === undefined) {
+          if (route.panel !== "settings" || outline === undefined || current === undefined) {
             anchored.current = undefined;
             return;
           }
@@ -322,7 +321,8 @@ export const settingsPlugin = builtin(
           navigation.navigate(anchor === undefined ? rest : { ...rest, anchor }, {
             replace: true,
           });
-        }, [outline, current?.id, entries.length, anchorEntry, route.anchor]);
+        }, [route.panel, outline, current?.id, entries.length, anchorEntry, route.anchor]);
+        if (route.panel !== "settings") return null;
         const jump = (id: string) => {
           outline?.select(id);
           const { anchor: _anchor, ...rest } = navigation.current();

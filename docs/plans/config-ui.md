@@ -504,6 +504,13 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
+- Leaving the node config page other than through the settings shell (a
+  thread in the sidebar, `settings.open` from the palette) does not ask about
+  unsaved edits (D1626, D1629); only the shell's navigation, Back, Escape and
+  a reload or closed tab (`beforeunload`) do.
+- A section waiting off screen guesses its height from its fields rather than
+  its last rendered height (D1625): a rendered section stays rendered, so it
+  has no last height until the page is opened again.
 - A fan-out through a connected node older than D475: the page sends
   `mesh.config.patch` to its own node, which delivers the change as that
   node's version does (without `edits`, and with `unset` dropped by nodes
