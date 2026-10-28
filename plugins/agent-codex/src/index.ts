@@ -849,6 +849,7 @@ export function createCodexRuntime(options: {
       if (answered === undefined) throw new Error("Codex did not say what the redemption did.");
       outcome = answered;
     } catch (error) {
+      options.log?.("codex could not redeem a reset credit", { error: String(error) });
       throw new Error("Codex could not redeem the reset credit.", { cause: error });
     } finally {
       clearTimeout(timer);
