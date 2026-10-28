@@ -181,9 +181,10 @@ const Next = MissionProgress.extend({
   /**
    * Working slices whose agent is idle now: its turn ended and nothing of it
    * runs or waits, so the slice moves only when someone asks (D1575). An agent
-   * whose status cannot be read is left out.
+   * whose status cannot be read is left out. Optional, so the answer of a
+   * mission's node without it still parses.
    */
-  idle: z.array(z.string()),
+  idle: z.array(z.string()).optional(),
 });
 
 const ThreadView = z
