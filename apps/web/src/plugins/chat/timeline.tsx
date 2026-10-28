@@ -86,6 +86,7 @@ import {
   type MessageFileChips,
 } from "./message-context.ts";
 import { ChatContext } from "./services.ts";
+import { usePresentTool } from "./tool-presentations.ts";
 import { THREAD_FIND_UNFOLD_EVENT } from "./thread-find.tsx";
 import { splitPromptIntoSegments } from "../../lib/composer-trigger.ts";
 import { MessageText } from "./message-text.tsx";
@@ -532,12 +533,17 @@ function entryDetails(entry: WorkEntry): string {
 
 function WorkEntryRow({ entry, live }: { entry: WorkEntry; live: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const Icon = entryIcon(entry);
+  const present = usePresentTool();
+  // A described command's group icon (preview.md D1681).
+  const Icon =
+    (entry.kind === "tool"
+      ? (present(entry.tool)?.group.icon as LucideIcon | undefined)
+      : undefined) ?? entryIcon(entry);
   const details = entryDetails(entry);
   const failed =
     entry.kind === "tool" && (entry.status === "failed" || entry.status === "declined");
   const running = entry.kind === "tool" && entry.status === "running";
-  const label = workEntryLabel(entry);
+  const label = workEntryLabel(entry, present);
   return (
     <WorkLine
       expandable={details !== "" && details !== label}
@@ -582,6 +588,7 @@ function WorkEntryRow({ entry, live }: { entry: WorkEntry; live: boolean }) {
 /** Consecutive work entries: one row each when alone, a summary that expands when several. */
 function WorkGroup({ entries, live }: { entries: readonly WorkEntry[]; live: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const present = usePresentTool();
   if (entries.length === 1) {
     return (
       <div className="pb-2">
@@ -589,12 +596,16 @@ function WorkGroup({ entries, live }: { entries: readonly WorkEntry[]; live: boo
       </div>
     );
   }
-  const { summary, hasFailure } = summarizeWork(entries);
+  const { summary, hasFailure, group } = summarizeWork(entries, present);
   const runningEntry = live
     ? entries.findLast((entry) => entry.kind === "tool" && entry.status === "running")
     : undefined;
   const reasoningOnly = entries.every((entry) => entry.kind === "reasoning");
-  const HeaderIcon = reasoningOnly ? BrainIcon : hasFailure ? CircleAlertIcon : HammerIcon;
+  const HeaderIcon = reasoningOnly
+    ? BrainIcon
+    : hasFailure
+      ? CircleAlertIcon
+      : ((group?.icon as LucideIcon | undefined) ?? HammerIcon);
   return (
     <div className="pb-2">
       <WorkLine
@@ -603,7 +614,7 @@ function WorkGroup({ entries, live }: { entries: readonly WorkEntry[]; live: boo
         icon={<HeaderIcon className="size-4 shrink-0 stroke-2 text-icon-muted" />}
         label={
           <span className={cn("block truncate", runningEntry !== undefined && "live-tool-shine")}>
-            {runningEntry === undefined ? summary : workEntryLabel(runningEntry)}
+            {runningEntry === undefined ? summary : workEntryLabel(runningEntry, present)}
           </span>
         }
         onToggle={() => setExpanded(!expanded)}

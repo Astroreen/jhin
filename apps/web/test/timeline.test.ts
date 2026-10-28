@@ -1,4 +1,5 @@
 import { ThreadEvents, type ToolCall } from "@jhin/agent-api";
+import type { ChatToolGroup, ChatToolPresentation } from "@jhin/client-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -8,9 +9,11 @@ import {
   foldsBeforeFinal,
   openRequests,
   reduceTimeline,
+  mcpToolOf,
   summarizeWork,
   turnBlocks,
   workEntryLabel,
+  type PresentTool,
   type RequestItem,
   type ToolItem,
   type WorkEntry,
@@ -300,6 +303,108 @@ describe("work summaries", () => {
         at: "2026-10-18T12:00:00.000Z",
       }),
     ).toBe("Approved: rm -rf build");
+  });
+});
+
+describe("described tools (preview.md D1681, D1682)", () => {
+  const browser: ChatToolGroup = {
+    id: "browser",
+    past: "Used",
+    infinitive: "use",
+    object: (count) => `browser ${count} ${count === 1 ? "time" : "times"}`,
+  };
+  const labels: Record<string, ChatToolPresentation["labels"]> = {
+    preview_click: ["Click", "Clicking", "Clicked", "in the preview browser"],
+    preview_snapshot: [
+      "Take a snapshot of",
+      "Taking a snapshot of",
+      "Took a snapshot of",
+      "the preview page",
+    ],
+  };
+  const present: PresentTool = (tool) => {
+    const name = mcpToolOf(tool.name);
+    const found = name === undefined ? undefined : labels[name];
+    return found === undefined ? undefined : { labels: found, group: browser };
+  };
+  const call = (name: string, status: ToolItem["status"] = "completed") =>
+    ({
+      kind: "tool",
+      itemId: `${name}-${status}`,
+      tool: { name, kind: "mcp", title: name },
+      output: "",
+      status,
+      at: "2026-10-18T12:00:00.000Z",
+    }) satisfies ToolItem;
+  const bash = {
+    kind: "tool",
+    itemId: "bash",
+    tool: command("ls"),
+    output: "",
+    status: "completed",
+    at: "2026-10-18T12:00:00.000Z",
+  } satisfies ToolItem;
+
+  it("finds the node's tool behind each agent's prefix", () => {
+    expect(mcpToolOf("mcp__jhin__preview_click")).toBe("preview_click");
+    expect(mcpToolOf("jhin.preview_click")).toBe("preview_click");
+    expect(mcpToolOf("jhin_preview_click")).toBe("preview_click");
+    expect(mcpToolOf("mcp__other__preview_click")).toBeUndefined();
+    expect(mcpToolOf("preview_click")).toBeUndefined();
+    expect(mcpToolOf("jhin.")).toBeUndefined();
+  });
+
+  it("labels a call with T3's verb for its state", () => {
+    expect(workEntryLabel(call("mcp__jhin__preview_click", "running"), present)).toBe(
+      "Clicking in the preview browser",
+    );
+    expect(workEntryLabel(call("jhin.preview_click"), present)).toBe(
+      "Clicked in the preview browser",
+    );
+    expect(workEntryLabel(call("jhin_preview_snapshot", "failed"), present)).toBe(
+      "Failed to take a snapshot of the preview page",
+    );
+    expect(workEntryLabel(call("mcp__jhin__preview_click", "declined"), present)).toBe(
+      "Declined to click in the preview browser",
+    );
+    // Undescribed tools keep their own title.
+    expect(workEntryLabel(call("mcp__jhin__threads_list"), present)).toBe(
+      "mcp__jhin__threads_list",
+    );
+  });
+
+  it("counts a group's calls as one part of the summary", () => {
+    const entries: WorkEntry[] = [
+      call("mcp__jhin__preview_click"),
+      call("mcp__jhin__preview_snapshot"),
+      call("mcp__jhin__preview_click", "failed"),
+      bash,
+    ];
+    expect(summarizeWork(entries, present)).toEqual({
+      summary: "Used browser 2 times and ran 1 command",
+      hasFailure: true,
+    });
+    // Without descriptions the calls are just tools.
+    expect(summarizeWork(entries).summary).toBe("Used 3 tools and ran 1 command");
+  });
+
+  it("says it tried when no call completed, and names the group alone", () => {
+    const entries: WorkEntry[] = [
+      call("mcp__jhin__preview_click", "failed"),
+      call("mcp__jhin__preview_snapshot", "declined"),
+    ];
+    expect(summarizeWork(entries, present)).toEqual({
+      summary: "Tried to use browser 2 times",
+      hasFailure: true,
+      group: browser,
+    });
+    expect(
+      summarizeWork([call("jhin.preview_click"), call("jhin.preview_click")], present),
+    ).toEqual({
+      summary: "Used browser 2 times",
+      hasFailure: false,
+      group: browser,
+    });
   });
 });
 

@@ -87,6 +87,30 @@ async function shot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
+test("D1681–D1682: the work log names the agent's browser and device tools as T3 does", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  // The fake agent calls the node's MCP tools as Claude names them; the snapshot fails.
+  await message.fill("/mcp preview_navigate preview_click preview_snapshot! device_list");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Called 4 tools");
+
+  await page.getByRole("button", { name: /^Worked for / }).click();
+  const summary = page.getByRole("button", {
+    name: "Used browser 2 times and used device controls 1 time",
+  });
+  await expect(summary).toBeVisible();
+  await summary.click();
+  await expect(page.getByText("Navigated the preview browser")).toBeVisible();
+  await expect(page.getByText("Clicked in the preview browser")).toBeVisible();
+  await expect(page.getByText("Failed to take a snapshot of the preview page")).toBeVisible();
+  await expect(page.getByText("Listed simulators and emulators")).toBeVisible();
+  await shot(page, info, "work-log-preview-tools");
+});
+
 test("D403: the agent's tab shows in the right panel, and the user takes it over", async ({
   page,
 }, info) => {
