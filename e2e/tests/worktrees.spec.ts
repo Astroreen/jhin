@@ -418,8 +418,10 @@ test("D1128–D1130: with the delete rule on, deleting a thread asks nothing and
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Source control/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Source control", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Source control" });
   // The node's own file shows the rules (this node has the delete rule from its project file).
   await expect(

@@ -234,6 +234,8 @@ export {
   type ConfirmOptions,
   type Dialogs,
   type PromptOptions,
+  type SettingsOutline,
+  type SettingsOutlineEntry,
   type SettingsPages,
   type SettingsSectionDefinition,
   type ToastOptions,

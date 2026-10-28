@@ -351,8 +351,33 @@ export interface SettingsSectionDefinition {
   readonly component: React.ComponentType;
 }
 
+/** An entry of a settings page's outline (config-ui.md D1629). */
+export interface SettingsOutlineEntry {
+  /** Stable id, public API: `<section>/<name>`, e.g. `node-config/jhin.web-ui`. */
+  readonly id: string;
+  readonly label: string;
+  /** Shown next to the label where there is room, e.g. a config section's name. */
+  readonly hint?: string;
+}
+
+/** What an open settings page lists under its navigation item (config-ui.md D1623, D1629). */
+export interface SettingsOutline {
+  readonly entries: readonly SettingsOutlineEntry[];
+  /** The entry in view, marked current; the route's `anchor` follows it. */
+  readonly current?: string;
+  /** Brings an entry into view and focuses it. */
+  select(id: string): void;
+  /** Asked before the settings shell leaves the page; `false` stays. */
+  confirmLeave?(): Promise<boolean>;
+}
+
 export interface SettingsPages {
   addSection(section: SettingsSectionDefinition): Disposable;
   /** Opens the settings page, at a section when given. */
   open(section?: string): void;
+  /**
+   * The outline of an open section, until disposed; a later call for the same
+   * section replaces it. Since 1.1 (config-ui.md D1629).
+   */
+  setOutline?(section: string, outline: SettingsOutline): Disposable;
 }

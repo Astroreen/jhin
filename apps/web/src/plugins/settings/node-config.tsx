@@ -1,10 +1,18 @@
 import {
   coversSection,
   NODE_CONFIG_CHANGED,
+  type MeshMember,
   type NodeConfigChanged,
   type NodeConnection,
 } from "@jhin/client-api";
-import { configChange, configEdits, sendConfigChange, type ConfigChange } from "@jhin/host-api";
+import {
+  configChange,
+  configEdits,
+  readConfigSections,
+  sendConfigChange,
+  type ConfigChange,
+  type ConfigRead,
+} from "@jhin/host-api";
 import {
   Alert,
   AlertDescription,
@@ -16,9 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  UI_SETTINGS_CAPABILITY,
+  type SettingsPages,
 } from "@jhin/ui";
 import { BracesIcon, ClockIcon, ListIcon, SaveIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import {
   equal,
@@ -28,7 +38,6 @@ import {
   sectionForm,
   setAt,
   validate,
-  type ConfigComment,
   type JsonSchema,
 } from "../../lib/config-form.ts";
 import { useExternal } from "../../lib/hooks.ts";
@@ -53,15 +62,7 @@ import {
   type ScopeProject,
 } from "./project-scope.tsx";
 
-interface ConfigRead {
-  readonly value?: unknown;
-  readonly error?: string;
-  /** Why the effective value is invalid, by dotted path (D84). */
-  readonly issues?: readonly { readonly path: string; readonly message: string }[];
-  readonly layers: { readonly node?: unknown; readonly project?: unknown };
-  /** Comments above the section's keys in the config files (D81); older nodes send none. */
-  readonly comments?: readonly ConfigComment[];
-}
+export type { ConfigRead };
 
 interface Outcome {
   readonly node: string;
@@ -80,7 +81,13 @@ const pretty = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Which of a node's config files the page edits (D477). */
+/** The settings section this page is, and the prefix of its outline's entries (D1623). */
+const PAGE = "node-config";
+/** The element of a config section on the page; the route's anchor names the section (D1628). */
+const domId = (section: string) => `${PAGE}-${section}`;
+/** How far outside the viewport a section starts rendering (D1625). */
+const NEAR_MARGIN = "600px 0px";
+
 export type ConfigLayer = ConfigChange["layer"];
 
 /** How the page names each file. */
@@ -148,40 +155,6 @@ export function readBack(
 }
 
 /**
- * The chosen section as the node has it, and its node file part being edited.
- * An answer for a section no longer chosen is dropped, so the edit always
- * belongs to the section it names.
- */
-export function useLoadedSection(
-  client: Pick<NodeConnection["client"], "call">,
-  section: string | undefined,
-  layer: ConfigLayer = "node",
-) {
-  const [loaded, setLoaded] = useState<Loaded | undefined>();
-  useEffect(() => {
-    if (section === undefined) return;
-    let current = true;
-    setLoaded(undefined);
-    void client
-      .call<ConfigRead>("host.config.get", { section })
-      .then((next) => {
-        if (current) setLoaded(loadedFrom(section, layer, next));
-      })
-      .catch((error: unknown) => {
-        if (current) {
-          setLoaded(loadedFrom(section, layer, { error: (error as Error).message, layers: {} }));
-        }
-      });
-    return () => {
-      current = false;
-    };
-  }, [client, section, layer]);
-  // Until the read of another section or file lands, nothing is shown, so nothing is edited.
-  const current = loaded?.section === section && loaded?.layer === layer ? loaded : undefined;
-  return [current, setLoaded] as const;
-}
-
-/**
  * The errors of a section as edited, by dotted path: what the schema refuses
  * as typed, and what the node reported for values not changed since (D84).
  */
@@ -206,19 +179,85 @@ function byTitle(schemas: Readonly<Record<string, JsonSchema>>) {
     .toSorted((a, b) => a.title.localeCompare(b.title));
 }
 
+/** Every section as the node has it, by name, with one file's part being edited. */
+export type LoadedSections = Readonly<Record<string, Loaded>>;
+
 /**
- * A node's config, section by section (D18–D20, D80): a form generated from
- * the section's schema, or its node file part as JSON, and the nodes of the
- * mesh to apply the change to — the ones not reachable now get it when they
- * return (D50).
+ * Every section of `names` as the node has it (D1624), each landing as its
+ * answer does, with the `layer` file's part being edited. Answers for another
+ * client or another list of sections are dropped; changing the file keeps
+ * the reads and starts each section's edit afresh from them.
+ */
+export function useLoadedSections(
+  client: Pick<NodeConnection["client"], "call">,
+  names: readonly string[] | undefined,
+  layer: ConfigLayer = "node",
+) {
+  const [loaded, setLoaded] = useState<LoadedSections>({});
+  const layerNow = useRef(layer);
+  layerNow.current = layer;
+  const key = names?.join("\n");
+  useEffect(() => {
+    if (names === undefined) return;
+    let current = true;
+    setLoaded({});
+    void readConfigSections(
+      (method, params) => client.call(method, params),
+      names,
+      (section, read) => {
+        if (!current) return;
+        setLoaded((before) => ({
+          ...before,
+          [section]: loadedFrom(section, layerNow.current, read),
+        }));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, key]);
+  useEffect(() => {
+    setLoaded((before) =>
+      Object.values(before).every((item) => item.layer === layer)
+        ? before
+        : Object.fromEntries(
+            Object.entries(before).map(([section, item]) => [
+              section,
+              item.layer === layer ? item : loadedFrom(section, layer, item.read),
+            ]),
+          ),
+    );
+  }, [layer]);
+  return [loaded, setLoaded] as const;
+}
+
+/** Whether a section holds changes not saved yet. */
+const isEdited = (loaded: Loaded | undefined) =>
+  loaded !== undefined && !equal(loaded.value, loaded.original);
+
+/** How a confirm names the sections that would lose their edits (D1626). */
+export function discardQuestion(titles: readonly string[]): { title: string; description: string } {
+  return titles.length === 1
+    ? { title: `Discard the changes to ${titles[0]}?`, description: "They were not saved." }
+    : {
+        title: `Discard the changes to ${titles.length} sections?`,
+        description: `Not saved: ${titles.join(", ")}.`,
+      };
+}
+
+/**
+ * A node's config, every section on one page (D18–D20, D80, D1622): a form
+ * generated from each section's schema, or its file part as JSON, and the
+ * nodes of the mesh to apply a change to — the ones not reachable now get it
+ * when they return (D50).
  */
 export function NodeConfigSection() {
   const { connections, dialogs } = useSettingsServices();
   const nodes = useExternal(connections, connections.list).filter((node) => node.state === "open");
   const [nodeId, setNodeId] = useState<string | undefined>();
   const node = nodes.find((candidate) => candidate.id === nodeId) ?? nodes[0];
-  /** The editor holds changes not saved yet. */
-  const edited = useRef(false);
+  /** The titles of the sections holding changes not saved yet. */
+  const edited = useRef<readonly string[]>([]);
   if (node === undefined) {
     return (
       <SettingsSection title="Node config">
@@ -239,18 +278,17 @@ export function NodeConfigSection() {
                   // Another node's config, once unsaved edits are given up on purpose.
                   void (async () => {
                     if (
-                      edited.current &&
+                      edited.current.length > 0 &&
                       dialogs !== undefined &&
                       !(await dialogs.confirm({
-                        title: `Discard the changes to ${node.label}'s config?`,
-                        description: "They were not saved.",
+                        ...discardQuestion(edited.current),
                         confirmLabel: "Discard",
                         variant: "destructive",
                       }))
                     ) {
                       return;
                     }
-                    edited.current = false;
+                    edited.current = [];
                     setNodeId(next);
                   })();
                 }}
@@ -273,72 +311,77 @@ export function NodeConfigSection() {
           />
         </SettingsSection>
       ) : null}
-      <ConfigEditor
+      <ConfigPage
         connection={node}
         key={node.id}
-        onEdited={(value) => {
-          edited.current = value;
+        onEdited={(titles) => {
+          edited.current = titles;
         }}
       />
     </>
   );
 }
 
-function ConfigEditor({
+/** What every section of the page shares: the node, the file and the scopes (D1622). */
+interface PageScope {
+  readonly connection: NodeConnection;
+  readonly layer: ConfigLayer;
+  /** A project of the node, chosen in T3's project scope (D1463). */
+  readonly scoped: string | undefined;
+  readonly projects: readonly ScopeProject[];
+  readonly members: readonly MeshMember[];
+  /** The nodes a save goes to (D20). */
+  readonly targets: readonly string[];
+  /** Sections being saved: their read-back is newer than a change heard meanwhile. */
+  readonly saving: MutableRefObject<Set<string>>;
+  /** Grows with every save of a section: a read started before one is older than its read-back. */
+  readonly reads: MutableRefObject<Map<string, number>>;
+  readonly setPending: (pending: readonly Pending[]) => void;
+}
+
+function ConfigPage({
   connection,
   onEdited,
 }: {
   connection: NodeConnection;
-  /** Whether the editor holds changes not saved yet, each time that changes. */
-  onEdited(edited: boolean): void;
+  /** The titles of the sections holding changes not saved yet, each time they change. */
+  onEdited(titles: readonly string[]): void;
 }) {
   const { context: plugin, mesh, toasts, dialogs } = useSettingsServices();
   const client = connection.client;
   const [schemas, setSchemas] = useState<Readonly<Record<string, JsonSchema>> | undefined>();
-  const [section, setSection] = useState<string | undefined>();
   const [layer, setLayer] = useState<ConfigLayer>("node");
-  const [loaded, setLoaded] = useLoadedSection(client, section, layer);
-  const [asJson, setAsJson] = useState(false);
+  const names = schemas === undefined ? undefined : byTitle(schemas);
+  const [loaded, setLoaded] = useLoadedSections(
+    client,
+    names?.map((item) => item.name),
+    layer,
+  );
   const [scope, setScope] = useState<readonly string[] | undefined>();
   /** T3's project scope (D1463): a project of this node, or all of them. */
   const [projectScope, setProjectScope] = useState<string | undefined>();
   const [projects, setProjects] = useState<readonly ScopeProject[]>([]);
-  /**
-   * The chosen project's `t3.json`, for the settings it backs (D1467); `failed`: it could not
-   * be read, so its layer is not shown (rather than read as empty).
-   */
-  const [t3File, setT3File] = useState<{
-    readonly projectId: string;
-    readonly file: unknown;
-    readonly failed?: boolean;
-  }>();
-  const [saving, setSaving] = useState(false);
-  /** A save in flight reads the section back itself; a change heard meanwhile is skipped. */
-  const savingNow = useRef(false);
-  /** Grows with every save: a read started before one is older than its read-back. */
-  const reads = useRef(0);
-  /** The editor as last rendered, for answers that arrive later. */
-  const loadedNow = useRef(loaded);
-  loadedNow.current = loaded;
-  const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
+  const saving = useRef(new Set<string>());
+  const reads = useRef(new Map<string, number>());
   const [pending, setPending] = useState<readonly Pending[]>([]);
   const members = useMeshMembers(mesh, connection.id) ?? [];
   const self = members.find((member) => member.self);
+  /** Sections rendered for good: near the viewport once, or named by a jump (D1625). */
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
+  /** The section in view, marked in the outline (D1623). */
+  const [inView, setInView] = useState<string | undefined>();
+  /** A section to bring into view once it is rendered. */
+  const [jumpTo, setJumpTo] = useState<string | undefined>();
+  const page = useRef<HTMLDivElement>(null);
+  /** The section a jump brought into view: it stays current until the user scrolls themselves. */
+  const pinned = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     // Answers for a client this node no longer has are dropped.
     let current = true;
     void client
       .call<{ properties?: Record<string, JsonSchema> }>("host.config.schema")
-      .then((schema) => {
-        if (!current) return;
-        const next = schema.properties ?? {};
-        const names = byTitle(next).map((item) => item.name);
-        setSchemas(next);
-        setSection((chosen) =>
-          chosen !== undefined && names.includes(chosen) ? chosen : names[0],
-        );
-      })
+      .then((schema) => current && setSchemas(schema.properties ?? {}))
       .catch((error: unknown) => {
         if (!current) return;
         setSchemas({});
@@ -370,40 +413,425 @@ function ConfigEditor({
     };
   }, [client]);
 
-  // The node says the shown section changed, whoever changed it (D484).
+  // The node says sections changed, whoever changed them: each is read again (D484, D1626).
+  const namesKey = names?.map((item) => item.name).join("\n");
   useEffect(() => {
+    if (names === undefined) return;
     const subscription = plugin.events.on(NODE_CONFIG_CHANGED, (payload) => {
       const changed = payload as NodeConfigChanged;
-      if (section === undefined || savingNow.current) return;
-      if (!coversSection(changed, connection.id, section)) return;
-      const started = reads.current;
-      void client
-        .call<ConfigRead>("host.config.get", { section })
-        .then((next) => {
+      const covered = names
+        .map((item) => item.name)
+        .filter(
+          (section) =>
+            !saving.current.has(section) && coversSection(changed, connection.id, section),
+        );
+      if (covered.length === 0) return;
+      const started = new Map(covered.map((section) => [section, reads.current.get(section) ?? 0]));
+      void readConfigSections(
+        (method, params) => client.call(method, params),
+        covered,
+        (section, next) => {
           // A save began meanwhile: its read-back is newer than this answer.
-          const current = loadedNow.current;
-          if (current?.section !== section || started !== reads.current) return;
+          if (started.get(section) !== (reads.current.get(section) ?? 0)) return;
+          // Unreadable now: the next change, a save or a reload reads it again.
+          if (next.error !== undefined && Object.keys(next.layers).length === 0) return;
           // Rebased onto whatever the editor holds by now, edits made during the read included.
-          setLoaded((latest) => (latest?.section === section ? rebase(latest, next) : latest));
-        })
-        // Unreadable now: the next change, a save or a reload reads it again.
-        .catch(() => undefined);
+          setLoaded((before) => {
+            const latest = before[section];
+            return latest === undefined ? before : { ...before, [section]: rebase(latest, next) };
+          });
+        },
+      );
     });
     return () => subscription.dispose();
-  }, [client, connection.id, section]);
+  }, [client, connection.id, namesKey]);
+
+  const titleOf = (section: string) =>
+    names?.find((item) => item.name === section)?.title ?? section;
+  const editedSections = (names ?? [])
+    .filter((item) => isEdited(loaded[item.name]))
+    .map((item) => item.title);
+  const editedKey = editedSections.join("\n");
+  useEffect(() => onEdited(editedSections), [editedKey]);
+  // Gone (another node chosen, or this one disconnected): nothing of it is unsaved.
+  useEffect(() => () => onEdited([]), []);
+  // A reload or a closed tab asks the browser's own question (D1626).
+  useEffect(() => {
+    if (editedSections.length === 0) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [editedKey]);
+
+  /** Whether unsaved edits may go: they are none, or the user gives them up (D1626). */
+  const discard = async () =>
+    editedSections.length === 0 ||
+    dialogs === undefined ||
+    (await dialogs.confirm({
+      ...discardQuestion(editedSections),
+      confirmLabel: "Discard",
+      variant: "destructive",
+    }));
+  const discardRef = useRef(discard);
+  discardRef.current = discard;
+
+  /** The other file, once unsaved edits are given up on purpose (D477). */
+  const chooseLayer = async (next: ConfigLayer) => {
+    if (next === layer || !(await discard())) return;
+    setLayer(next);
+  };
+  /** Another project scope, once unsaved edits are given up on purpose (D1626). */
+  const chooseProject = async (next: string | undefined) => {
+    if (next === projectScope || !(await discard())) return;
+    setLoaded((before) =>
+      Object.fromEntries(
+        Object.entries(before).map(([section, item]) => [
+          section,
+          isEdited(item) ? { ...item, value: item.original } : item,
+        ]),
+      ),
+    );
+    setProjectScope(next);
+  };
+
+  // The outline in the settings navigation (D1623, D1629).
+  const pages = plugin.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
+  const select = (id: string) => {
+    const section = id.slice(PAGE.length + 1);
+    setShown((before) => (before.has(section) ? before : new Set(before).add(section)));
+    pinned.current = section;
+    setInView(section);
+    setJumpTo(section);
+  };
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  useEffect(() => {
+    if (pages?.setOutline === undefined || names === undefined) return;
+    const registration = pages.setOutline(PAGE, {
+      entries: names.map((item) => ({
+        id: `${PAGE}/${item.name}`,
+        label: item.title,
+        ...(item.title === item.name ? {} : { hint: item.name }),
+      })),
+      ...(inView === undefined ? {} : { current: `${PAGE}/${inView}` }),
+      select: (id) => selectRef.current(id),
+      confirmLeave: () => discardRef.current(),
+    });
+    return () => registration.dispose();
+  }, [pages, namesKey, inView]);
+
+  // A jump: once the section is rendered, it comes into view and its heading takes focus.
+  useEffect(() => {
+    if (jumpTo === undefined) return;
+    const element = document.getElementById(domId(jumpTo));
+    if (element === null) return;
+    element.scrollIntoView({ block: "start" });
+    const heading = element.querySelector("h2");
+    if (heading !== null) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    setJumpTo(undefined);
+  }, [jumpTo, shown]);
+
+  // Which sections are near the viewport (D1625), and which one is in view (D1623).
+  useEffect(() => {
+    const root = page.current?.closest<HTMLElement>("[data-settings-page-scroll]") ?? null;
+    const elements = [
+      ...(page.current?.querySelectorAll<HTMLElement>("[data-config-section]") ?? []),
+    ];
+    if (elements.length === 0) return;
+    const near = new IntersectionObserver(
+      (entries) => {
+        const reached = entries
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) => (entry.target as HTMLElement).dataset["configSection"] ?? "");
+        if (reached.length === 0) return;
+        setShown((before) =>
+          reached.every((section) => before.has(section))
+            ? before
+            : new Set([...before, ...reached]),
+        );
+      },
+      { root, rootMargin: NEAR_MARGIN },
+    );
+    for (const element of elements) near.observe(element);
+    let frame: number | undefined;
+    const spy = () => {
+      frame = undefined;
+      // The last sections cannot reach the top: a jump to one keeps it current.
+      if (pinned.current !== undefined) return;
+      const top = (root?.getBoundingClientRect().top ?? 0) + 96;
+      let passed: string | undefined;
+      for (const element of elements) {
+        if (element.getBoundingClientRect().top > top) break;
+        passed = element.dataset["configSection"];
+      }
+      setInView(passed ?? elements[0]?.dataset["configSection"]);
+    };
+    const onScroll = () => {
+      frame ??= requestAnimationFrame(spy);
+    };
+    const unpin = () => {
+      pinned.current = undefined;
+    };
+    const target: HTMLElement | Window = root ?? window;
+    target.addEventListener("scroll", onScroll, { passive: true });
+    for (const kind of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+      target.addEventListener(kind, unpin, { passive: true });
+    }
+    spy();
+    return () => {
+      near.disconnect();
+      target.removeEventListener("scroll", onScroll);
+      for (const kind of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+        target.removeEventListener(kind, unpin);
+      }
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [namesKey]);
+
+  const targets = scope ?? (self === undefined ? [] : [self.nodeId]);
+  const scoped =
+    projectScope !== undefined && projects.some((project) => project.id === projectScope)
+      ? projectScope
+      : undefined;
+  const shared: PageScope = {
+    connection,
+    layer,
+    scoped,
+    projects,
+    members,
+    targets,
+    saving,
+    reads,
+    setPending,
+  };
+  const nameOf = (nodeId: string) =>
+    members.find((member) => member.nodeId === nodeId)?.name ?? nodeId;
+
+  return (
+    <div className="flex flex-col gap-8" ref={page}>
+      <SettingsSection title={`Config of ${connection.label}`}>
+        {names === undefined ? (
+          <SettingsEmpty>
+            <Spinner size="sm" tone="muted" />
+          </SettingsEmpty>
+        ) : names.length === 0 ? (
+          <SettingsEmpty>This node shares no config sections.</SettingsEmpty>
+        ) : (
+          <>
+            <SettingsRow
+              control={
+                <Select
+                  onValueChange={(value) => void chooseLayer(value as ConfigLayer)}
+                  value={layer}
+                >
+                  <SelectTrigger aria-label="Config file" className="w-full sm:w-64" size="sm">
+                    <SelectValue>{LAYER_TITLES[layer]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    <SelectItem value="node">{LAYER_TITLES.node}</SelectItem>
+                    <SelectItem value="project">{LAYER_TITLES.project}</SelectItem>
+                  </SelectPopup>
+                </Select>
+              }
+              description="The node's config.jsonc, or .jhin/config.jsonc of the project the node was started in, which wins over it."
+              title="File"
+            />
+            {projects.length === 0 ? null : (
+              <ProjectScopeSentence
+                onChange={(next) => void chooseProject(next)}
+                projects={projects}
+                value={scoped}
+              />
+            )}
+            {members.length > 1 ? (
+              <SettingsRow
+                description="Every node of the mesh can take the same change; one that is offline gets it when it returns."
+                title="Apply to"
+              >
+                <div
+                  aria-label="Apply to nodes"
+                  className="mt-2 mb-2 flex flex-wrap gap-x-4 gap-y-2"
+                  role="group"
+                >
+                  {members.map((member) => (
+                    <label
+                      className="flex cursor-pointer items-center gap-2 text-sm"
+                      key={member.nodeId}
+                    >
+                      <Checkbox
+                        checked={targets.includes(member.nodeId)}
+                        onCheckedChange={(checked) =>
+                          setScope(
+                            checked
+                              ? [...targets, member.nodeId]
+                              : targets.filter((target) => target !== member.nodeId),
+                          )
+                        }
+                      />
+                      {member.name}
+                      {member.self ? (
+                        <span className="text-xs text-muted-foreground">(this node)</span>
+                      ) : null}
+                      {!member.reachable && !member.self ? (
+                        <span className="text-xs text-muted-foreground">offline</span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              </SettingsRow>
+            ) : null}
+          </>
+        )}
+      </SettingsSection>
+      {(names ?? []).map((item) => (
+        <div data-config-section={item.name} id={domId(item.name)} key={item.name}>
+          {shown.has(item.name) ? (
+            <ConfigSectionCard
+              loaded={loaded[item.name]}
+              name={item.name}
+              schema={schemas?.[item.name]}
+              scope={shared}
+              title={item.title}
+              update={(change) =>
+                setLoaded((before) => {
+                  const latest = before[item.name];
+                  if (latest === undefined) return before;
+                  const next = change(latest);
+                  return next === latest ? before : { ...before, [item.name]: next };
+                })
+              }
+            />
+          ) : (
+            <SectionPlaceholder
+              name={item.name}
+              onFound={() => select(`${PAGE}/${item.name}`)}
+              schema={schemas?.[item.name]}
+              title={item.title}
+            />
+          )}
+        </div>
+      ))}
+      {pending.length === 0 ? null : (
+        <SettingsSection icon={<ClockIcon className="size-4" />} title="Waiting for their node">
+          {pending.map((change) => (
+            <SettingsRow
+              description={`Queued ${new Date(change.queuedAt).toLocaleString()}`}
+              key={change.id}
+              title={`${titleOf(change.section)} → ${nameOf(change.node)}`}
+            />
+          ))}
+        </SettingsSection>
+      )}
+    </div>
+  );
+}
+
+/** The title a section shows: its name in mono next to a title that differs (D1622). */
+function SectionTitle({ name, title }: { name: string; title: string }) {
+  return title === name ? (
+    <span className="font-mono">{name}</span>
+  ) : (
+    <>
+      {title}
+      <span className="ms-2 font-mono text-xs text-muted-foreground">{name}</span>
+    </>
+  );
+}
+
+/**
+ * A section not near the viewport yet (D1625): its height guessed from its
+ * fields, and their words kept for the browser's find (`hidden="until-found"`),
+ * which renders the section when it matches.
+ */
+function SectionPlaceholder({
+  name,
+  title,
+  schema,
+  onFound,
+}: {
+  name: string;
+  title: string;
+  schema: JsonSchema | undefined;
+  onFound(): void;
+}) {
+  const form = sectionForm(name, schema);
+  const found = useRef(onFound);
+  found.current = onFound;
+  const words = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = words.current;
+    if (element === null) return;
+    element.setAttribute("hidden", "until-found");
+    const onMatch = () => found.current();
+    element.addEventListener("beforematch", onMatch);
+    return () => element.removeEventListener("beforematch", onMatch);
+  }, []);
+  return (
+    <section aria-busy="true" aria-label={title} className="space-y-2.5">
+      <div className="flex min-h-7 items-start px-3 sm:px-4">
+        <h2 className="flex min-h-7 items-center text-sm font-normal text-foreground/70">
+          <SectionTitle name={name} title={title} />
+        </h2>
+      </div>
+      <div
+        className="rounded-xl border border-border/60 bg-card/40"
+        style={{ minHeight: Math.min(160 + form.fields.length * 64, 1200) }}
+      >
+        <div ref={words}>
+          {form.description === undefined ? null : <p>{form.description}</p>}
+          {form.fields.map((field) => (
+            <p key={field.key}>
+              {field.title}
+              {field.description === undefined ? null : ` ${field.description}`}
+            </p>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** One section of the page: its form or JSON, Save and outcomes, as one section had (D1622). */
+function ConfigSectionCard({
+  name,
+  title,
+  schema,
+  loaded,
+  update,
+  scope,
+}: {
+  name: string;
+  title: string;
+  schema: JsonSchema | undefined;
+  /** Undefined until the node answers for it. */
+  loaded: Loaded | undefined;
+  update(change: (current: Loaded) => Loaded): void;
+  scope: PageScope;
+}) {
+  const { context: plugin, toasts } = useSettingsServices();
+  const { connection, layer, scoped, projects, members, targets } = scope;
+  const client = connection.client;
+  const [asJson, setAsJson] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
+  /** The chosen project's `t3.json`, for the settings it backs (D1467); `failed`: not shown. */
+  const [t3File, setT3File] = useState<{
+    readonly projectId: string;
+    readonly file: unknown;
+    readonly failed?: boolean;
+  }>();
+  const self = members.find((member) => member.self);
+  // The previous file's outcome is not this one's.
+  useEffect(() => setOutcomes([]), [layer]);
 
   const read = loaded?.read;
-  const edited = loaded !== undefined && !equal(loaded.value, loaded.original);
-  useEffect(() => onEdited(edited), [edited]);
-  // Gone (another node chosen, or this one disconnected): nothing of it is unsaved.
-  useEffect(() => () => onEdited(false), []);
-
-  const names = schemas === undefined ? undefined : byTitle(schemas);
-  const schema = section === undefined ? undefined : schemas?.[section];
-  const form =
-    loaded === undefined ? undefined : sectionForm(loaded.section, schema, read?.comments);
+  const edited = isEdited(loaded);
+  const form = loaded === undefined ? undefined : sectionForm(name, schema, read?.comments);
   const errors = loaded === undefined ? new Map<string, string[]>() : errorsOf(schema, loaded);
-  // Only JSON can edit a section without keys, or a node file part that is no object.
+  // Only JSON can edit a section without keys, or a file part that is no object.
   const formFits = form !== undefined && form.fields.length > 0 && isObject(loaded?.value);
   const showJson = asJson || !formFits;
   const unknownKeys =
@@ -413,10 +841,6 @@ function ConfigEditor({
 
   // The project scope (D1463): a project's entry of the section's `projects` record.
   const entry = projectEntrySchema(schema);
-  const scoped =
-    projectScope !== undefined && projects.some((project) => project.id === projectScope)
-      ? projectScope
-      : undefined;
   const backedBy = entry === undefined ? new Map<string, string>() : t3FileFields(entry);
   useEffect(() => {
     if (scoped === undefined || backedBy.size === 0) return;
@@ -438,34 +862,7 @@ function ConfigEditor({
     };
   }, [client, scoped, backedBy.size]);
 
-  /** Whether unsaved edits may go: they are none, or the user gives them up. */
-  const discard = async () =>
-    !edited ||
-    dialogs === undefined ||
-    (await dialogs.confirm({
-      title: `Discard the changes to ${loaded.section}?`,
-      description: "They were not saved.",
-      confirmLabel: "Discard",
-      variant: "destructive",
-    }));
-
-  /** Another section, once unsaved edits are given up on purpose. */
-  const choose = async (next: string) => {
-    if (next === section || !(await discard())) return;
-    setOutcomes([]);
-    setAsJson(false);
-    setSection(next);
-  };
-
-  /** The other file, once unsaved edits are given up on purpose (D477). */
-  const chooseLayer = async (next: ConfigLayer) => {
-    if (next === layer || !(await discard())) return;
-    setOutcomes([]);
-    setLayer(next);
-  };
   const other: ConfigLayer = layer === "node" ? "project" : "node";
-
-  const targets = scope ?? (self === undefined ? [] : [self.nodeId]);
   const blocked =
     loaded === undefined ||
     // Another file chosen, and not read yet: the edit is still the old file's.
@@ -476,14 +873,13 @@ function ConfigEditor({
 
   const save = async () => {
     if (loaded === undefined || blocked || !isObject(loaded.value)) return;
-    // The section the edit was read for, whatever is chosen meanwhile, and the
-    // value saved, whatever is changed meanwhile.
-    const { section: saved, value: sent, original, layer: file } = loaded;
+    // The value saved, whatever is changed meanwhile.
+    const { value: sent, original, layer: file } = loaded;
     // Only the paths that changed are written, so the rest keeps its comments (D84, D476).
-    const change = configChange(file, saved, original, sent);
-    setSaving(true);
-    savingNow.current = true;
-    reads.current += 1;
+    const change = configChange(file, name, original, sent);
+    setBusy(true);
+    scope.saving.current.add(name);
+    scope.reads.current.set(name, (scope.reads.current.get(name) ?? 0) + 1);
     // The previous save's outcome is not this one's.
     setOutcomes([]);
     try {
@@ -508,9 +904,10 @@ function ConfigEditor({
           ...change,
         });
         setOutcomes(result.results);
-        setPending(
-          await client.call<Pending[]>("mesh.config.pending").catch(() => pending as Pending[]),
-        );
+        await client
+          .call<Pending[]>("mesh.config.pending")
+          .then(scope.setPending)
+          .catch(() => undefined);
       }
     } catch (error) {
       toasts?.show({
@@ -520,18 +917,18 @@ function ConfigEditor({
       });
       return;
     } finally {
-      setSaving(false);
-      savingNow.current = false;
+      setBusy(false);
+      scope.saving.current.delete(name);
     }
     // Other plugins follow what the section means (the node icons, `jhin.host`).
     plugin.events.emit("settings.node-config.saved", {
       connection: connection.id,
-      section: saved,
+      section: name,
     });
-    // What the file holds now, if the section is still the one shown.
+    // What the file holds now.
     try {
-      const next = await client.call<ConfigRead>("host.config.get", { section: saved });
-      setLoaded((current) => readBack(current, saved, sent, next));
+      const next = await client.call<ConfigRead>("host.config.get", { section: name });
+      update((current) => readBack(current, name, sent, next) ?? current);
     } catch (error) {
       toasts?.show({
         type: "warning",
@@ -553,21 +950,16 @@ function ConfigEditor({
           errors,
           root: schema ?? {},
           set: (path, next) =>
-            setLoaded((current) =>
-              current === undefined
-                ? current
-                : { ...current, value: setAt(current.value, path, next) ?? {} },
-            ),
+            update((current) => ({ ...current, value: setAt(current.value, path, next) ?? {} })),
         };
 
   const keys = entry === undefined ? [] : projectKeys(entry);
   const entryPath = scoped === undefined ? [] : [PROJECT_SETTINGS_KEY, scoped];
-  /** What a file sets for a top-level key: the edited file as edited, the other as read. */
   // The project file wins over the node file (D19), whichever of them is edited.
   const nodeSets = (key: string) => {
-    const edited = getAt(loaded?.value, [key]);
+    const editedValue = getAt(loaded?.value, [key]);
     const otherFile = getAt(read?.layers[other], [key]);
-    return layer === "project" ? (edited ?? otherFile) : (otherFile ?? edited);
+    return layer === "project" ? (editedValue ?? otherFile) : (otherFile ?? editedValue);
   };
   const t3Value = (key: string) => {
     const field = backedBy.get(key);
@@ -591,7 +983,7 @@ function ConfigEditor({
   const projectForm =
     projectSchema === undefined || loaded === undefined
       ? undefined
-      : sectionForm(loaded.section, projectSchema);
+      : sectionForm(name, projectSchema);
   const prefix = `${entryPath.join(".")}.`;
   const projectContext: FieldsContext | undefined =
     projectSchema === undefined || loaded === undefined || scoped === undefined
@@ -608,8 +1000,7 @@ function ConfigEditor({
           resetTooltip: "Reset to inherited value",
           unsetLabel: "Inherit",
           set: (path, next) =>
-            setLoaded((current) => {
-              if (current === undefined) return current;
+            update((current) => {
               let value = setAt(current.value, [...entryPath, ...path], next) ?? {};
               // What is left empty goes, up to the record itself (its default is empty):
               // a project setting reset to Inherit leaves no `{}` behind.
@@ -634,7 +1025,7 @@ function ConfigEditor({
                   : undefined,
               fallback: nodeDefault(field.key),
             });
-            const effective = layers.find((layer) => layer.effective);
+            const effective = layers.find((item) => item.effective);
             return {
               layers,
               overridden: effective?.key === "project",
@@ -672,82 +1063,30 @@ function ConfigEditor({
   );
 
   return (
-    <>
-      <SettingsSection title={`Config of ${connection.label}`}>
-        {names === undefined ? (
-          <SettingsEmpty>
-            <Spinner size="sm" tone="muted" />
-          </SettingsEmpty>
-        ) : names.length === 0 ? (
-          <SettingsEmpty>This node shares no config sections.</SettingsEmpty>
-        ) : (
-          <SettingsRow
-            control={
-              <Select onValueChange={(value) => void choose(String(value))} value={section ?? ""}>
-                <SelectTrigger aria-label="Config section" className="w-full sm:w-64" size="sm">
-                  <SelectValue>{names.find((item) => item.name === section)?.title}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {names.map((item) => (
-                    <SelectItem key={item.name} value={item.name}>
-                      {item.title}
-                      {item.title === item.name ? null : (
-                        <span className="ms-2 font-mono text-xs text-muted-foreground">
-                          {item.name}
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            }
-            description="Sections are declared by the node's plugins, each with a schema."
-            title="Section"
-          />
-        )}
-        {names === undefined || names.length === 0 ? null : (
-          <SettingsRow
-            control={
-              <Select
-                onValueChange={(value) => void chooseLayer(value as ConfigLayer)}
-                value={layer}
-              >
-                <SelectTrigger aria-label="Config file" className="w-full sm:w-64" size="sm">
-                  <SelectValue>{LAYER_TITLES[layer]}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="node">{LAYER_TITLES.node}</SelectItem>
-                  <SelectItem value="project">{LAYER_TITLES.project}</SelectItem>
-                </SelectPopup>
-              </Select>
-            }
-            description="The node's config.jsonc, or .jhin/config.jsonc of the project the node was started in, which wins over it."
-            title="File"
-          />
-        )}
-      </SettingsSection>
-      {loaded === undefined || form === undefined || context === undefined ? null : (
-        <SettingsSection
-          headerAction={
-            formFits ? (
-              <Button
-                aria-pressed={asJson}
-                onClick={() => setAsJson((current) => !current)}
-                size="xs"
-                variant="ghost-muted"
-              >
-                {asJson ? <ListIcon /> : <BracesIcon />}
-                {asJson ? "Edit as form" : "Edit as JSON"}
-              </Button>
-            ) : null
-          }
-          title={form.title}
-        >
-          {projects.length === 0 || showJson ? null : (
-            <ProjectScopeSentence onChange={setProjectScope} projects={projects} value={scoped} />
-          )}
+    <SettingsSection
+      headerAction={
+        formFits ? (
+          <Button
+            aria-pressed={asJson}
+            onClick={() => setAsJson((current) => !current)}
+            size="xs"
+            variant="ghost-muted"
+          >
+            {asJson ? <ListIcon /> : <BracesIcon />}
+            {asJson ? "Edit as form" : "Edit as JSON"}
+          </Button>
+        ) : null
+      }
+      title={title}
+    >
+      {loaded === undefined || form === undefined || context === undefined ? (
+        <SettingsEmpty>
+          <Spinner size="sm" tone="muted" />
+        </SettingsEmpty>
+      ) : (
+        <>
           <div className="space-y-1 px-3 py-3 sm:px-4">
-            <p className="font-mono text-xs text-muted-foreground">{loaded.section}</p>
+            <p className="font-mono text-xs text-muted-foreground">{name}</p>
             {form.description === undefined ? null : (
               <p className="max-w-xl text-xs leading-normal text-muted-foreground/80">
                 {form.description}
@@ -789,13 +1128,9 @@ function ConfigEditor({
                   messages={[...errors.entries()].flatMap(([path, messages]) =>
                     messages.map((message) => (path === "" ? message : `${path}: ${message}`)),
                   )}
-                  onChange={(next) =>
-                    setLoaded((current) =>
-                      current === undefined ? current : { ...current, value: next },
-                    )
-                  }
+                  onChange={(next) => update((current) => ({ ...current, value: next }))}
                   schema={schema ?? {}}
-                  label={`${loaded.section} in the ${LAYER_TITLES[layer].toLowerCase()}`}
+                  label={`${name} in the ${LAYER_TITLES[layer].toLowerCase()}`}
                   value={loaded.value}
                 />
               </SettingsRow>
@@ -836,43 +1171,6 @@ function ConfigEditor({
               )}
             </>
           )}
-          {members.length > 1 ? (
-            <SettingsRow
-              description="Every node of the mesh can take the same change; one that is offline gets it when it returns."
-              title="Apply to"
-            >
-              <div
-                aria-label="Apply to nodes"
-                className="mt-2 mb-2 flex flex-wrap gap-x-4 gap-y-2"
-                role="group"
-              >
-                {members.map((member) => (
-                  <label
-                    className="flex cursor-pointer items-center gap-2 text-sm"
-                    key={member.nodeId}
-                  >
-                    <Checkbox
-                      checked={targets.includes(member.nodeId)}
-                      onCheckedChange={(checked) =>
-                        setScope(
-                          checked
-                            ? [...targets, member.nodeId]
-                            : targets.filter((target) => target !== member.nodeId),
-                        )
-                      }
-                    />
-                    {member.name}
-                    {member.self ? (
-                      <span className="text-xs text-muted-foreground">(this node)</span>
-                    ) : null}
-                    {!member.reachable && !member.self ? (
-                      <span className="text-xs text-muted-foreground">offline</span>
-                    ) : null}
-                  </label>
-                ))}
-              </div>
-            </SettingsRow>
-          ) : null}
           <div className="flex items-center justify-end gap-2 px-3 py-3 sm:px-4">
             {/* Announced when a save ends, for screen readers too. */}
             <div aria-live="polite" className="me-auto" role="status">
@@ -898,11 +1196,7 @@ function ConfigEditor({
             </div>
             <Button
               disabled={!edited}
-              onClick={() =>
-                setLoaded((current) =>
-                  current === undefined ? current : { ...current, value: current.original },
-                )
-              }
+              onClick={() => update((current) => ({ ...current, value: current.original }))}
               size="sm"
               variant="ghost"
             >
@@ -910,29 +1204,16 @@ function ConfigEditor({
             </Button>
             <Button
               // Without the mesh (or before it answers) the change is this node's alone.
-              disabled={
-                saving || !edited || blocked || (self !== undefined && targets.length === 0)
-              }
+              disabled={busy || !edited || blocked || (self !== undefined && targets.length === 0)}
               onClick={() => void save()}
               size="sm"
             >
-              {saving ? <Spinner size="sm" /> : <SaveIcon />}
+              {busy ? <Spinner size="sm" /> : <SaveIcon />}
               Save
             </Button>
           </div>
-        </SettingsSection>
+        </>
       )}
-      {pending.length === 0 ? null : (
-        <SettingsSection icon={<ClockIcon className="size-4" />} title="Waiting for their node">
-          {pending.map((change) => (
-            <SettingsRow
-              description={`Queued ${new Date(change.queuedAt).toLocaleString()}`}
-              key={change.id}
-              title={`${change.section} → ${nameOf(change.node)}`}
-            />
-          ))}
-        </SettingsSection>
-      )}
-    </>
+    </SettingsSection>
   );
 }

@@ -23,8 +23,13 @@ import {
   UI_SETTINGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
   cn,
   type Dialogs,
+  type SettingsOutline,
   type SettingsPages,
   type SettingsSectionDefinition,
   type SlotRegistry,
@@ -33,6 +38,7 @@ import {
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  ChevronDownIcon,
   KeyRoundIcon,
   KeyboardIcon,
   PaletteIcon,
@@ -44,6 +50,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useSyncExternalStore,
   type ComponentType,
 } from "react";
@@ -123,10 +130,34 @@ function createSections() {
   };
 }
 
+/** The outline each open section contributes (config-ui.md D1629). */
+function createOutlines() {
+  let outlines = new Map<string, SettingsOutline>();
+  const listeners = new Set<() => void>();
+  return {
+    set(section: string, outline: SettingsOutline) {
+      outlines = new Map(outlines).set(section, outline);
+      for (const listener of Array.from(listeners)) listener();
+      return toDisposable(() => {
+        if (outlines.get(section) !== outline) return;
+        outlines = new Map(outlines);
+        outlines.delete(section);
+        for (const listener of Array.from(listeners)) listener();
+      });
+    },
+    all: () => outlines,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
 export const settingsPlugin = builtin(
   "jhin.settings",
   {
-    provides: { [UI_SETTINGS_CAPABILITY]: "1.0.0" },
+    // 1.1: `setOutline` (config-ui.md D1629).
+    provides: { [UI_SETTINGS_CAPABILITY]: "1.1.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
@@ -164,11 +195,12 @@ export const settingsPlugin = builtin(
         dialogs,
       };
       const sections = createSections();
+      const outlines = createOutlines();
       // The section the page opens on is fetched while the page is idle (D1596).
       context.subscriptions.add(prefetchWhenIdle(GeneralSection.preload));
 
       const open = (section?: string) => {
-        const { section: _section, ...route } = navigation.current();
+        const { section: _section, anchor: _anchor, ...route } = navigation.current();
         navigation.navigate({
           ...route,
           panel: "settings",
@@ -176,10 +208,24 @@ export const settingsPlugin = builtin(
         });
       };
       const close = () => {
-        const { panel: _panel, section: _section, ...rest } = navigation.current();
+        const { panel: _panel, section: _section, anchor: _anchor, ...rest } = navigation.current();
         navigation.navigate(rest);
       };
-      const pages: SettingsPages = { addSection: (section) => sections.add(section), open };
+      /** Leaves the shown section once its page lets it go (D1629). */
+      const leave = (then: () => void) => {
+        const route = navigation.current();
+        const shown = route.section ?? sections.list()[0]?.id;
+        const outline = shown === undefined ? undefined : outlines.all().get(shown);
+        if (outline?.confirmLeave === undefined) return then();
+        void outline.confirmLeave().then((ok) => {
+          if (ok) then();
+        });
+      };
+      const pages: SettingsPages = {
+        addSection: (section) => sections.add(section),
+        open,
+        setOutline: (section, outline) => outlines.set(section, outline),
+      };
       context.services.provide(UI_SETTINGS_CAPABILITY, pages);
 
       for (const section of [
@@ -240,7 +286,7 @@ export const settingsPlugin = builtin(
             const target = event.target as HTMLElement | null;
             if (target?.closest("input, textarea, [role=dialog], [data-keybinding-capture]"))
               return;
-            close();
+            leave(close);
           };
           window.addEventListener("keydown", onKeyDown);
           return () => window.removeEventListener("keydown", onKeyDown);
@@ -248,6 +294,40 @@ export const settingsPlugin = builtin(
         if (route.panel !== "settings") return null;
         const current = list.find((section) => section.id === route.section) ?? list[0];
         const Section = current?.component;
+        const outline = useSyncExternalStore(outlines.subscribe, outlines.all).get(
+          current?.id ?? "",
+        );
+        const anchorOf = (id: string) => id.slice((current?.id.length ?? 0) + 1);
+        /** The outline whose anchor was selected already: once per outline (D1629). */
+        const anchored = useRef<string | undefined>(undefined);
+        const entries = outline?.entries ?? [];
+        const anchorEntry = entries.find((entry) => anchorOf(entry.id) === route.anchor)?.id;
+        useEffect(() => {
+          if (outline === undefined || current === undefined) {
+            anchored.current = undefined;
+            return;
+          }
+          if (anchored.current !== current.id) {
+            if (entries.length === 0) return;
+            anchored.current = current.id;
+            if (anchorEntry !== undefined) {
+              outline.select(anchorEntry);
+              return;
+            }
+          }
+          // The route names the entry in view, without a history entry of its own (D1628).
+          const anchor = outline.current === undefined ? undefined : anchorOf(outline.current);
+          if (anchor === route.anchor) return;
+          const { anchor: _anchor, ...rest } = navigation.current();
+          navigation.navigate(anchor === undefined ? rest : { ...rest, anchor }, {
+            replace: true,
+          });
+        }, [outline, current?.id, entries.length, anchorEntry, route.anchor]);
+        const jump = (id: string) => {
+          outline?.select(id);
+          const { anchor: _anchor, ...rest } = navigation.current();
+          navigation.navigate({ ...rest, anchor: anchorOf(id) }, { replace: true });
+        };
         return (
           <SettingsContext.Provider value={services}>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -258,7 +338,7 @@ export const settingsPlugin = builtin(
                 >
                   <button
                     className="cursor-pointer font-medium text-muted-foreground hover:text-foreground"
-                    onClick={() => open()}
+                    onClick={() => leave(() => open())}
                     type="button"
                   >
                     Settings
@@ -269,7 +349,7 @@ export const settingsPlugin = builtin(
                   <span className="truncate font-medium text-foreground">{current?.label}</span>
                 </nav>
                 <div className="ms-auto flex shrink-0 items-center">
-                  <Button onClick={close} size="xs" variant="ghost">
+                  <Button onClick={() => leave(close)} size="xs" variant="ghost">
                     <ArrowLeftIcon className="mx-0.5 size-3.5" />
                     Back
                   </Button>
@@ -284,21 +364,47 @@ export const settingsPlugin = builtin(
                     const Icon = section.icon;
                     const active = section.id === current?.id;
                     return (
-                      <button
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "flex h-8 w-full cursor-pointer items-center gap-2 rounded-[var(--control-radius)] px-2.5 text-left text-sm font-medium text-muted-foreground/80 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                          active && "bg-accent text-foreground",
-                        )}
-                        key={section.id}
-                        onClick={() => open(section.id)}
-                        type="button"
-                      >
-                        {Icon === undefined ? null : (
-                          <Icon className="size-4 shrink-0 text-icon-muted" />
-                        )}
-                        <span className="truncate">{section.label}</span>
-                      </button>
+                      <div className="flex flex-col gap-0.5" key={section.id}>
+                        <button
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "flex h-8 w-full cursor-pointer items-center gap-2 rounded-[var(--control-radius)] px-2.5 text-left text-sm font-medium text-muted-foreground/80 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                            active && "bg-accent text-foreground",
+                          )}
+                          onClick={() => (active ? undefined : leave(() => open(section.id)))}
+                          type="button"
+                        >
+                          {Icon === undefined ? null : (
+                            <Icon className="size-4 shrink-0 text-icon-muted" />
+                          )}
+                          <span className="truncate">{section.label}</span>
+                        </button>
+                        {active && entries.length > 0 ? (
+                          <ul
+                            aria-label={`${section.label} outline`}
+                            className="ms-4 flex flex-col gap-0.5 border-s border-border/60 ps-1.5"
+                          >
+                            {entries.map((entry) => (
+                              <li key={entry.id}>
+                                <button
+                                  aria-current={
+                                    entry.id === outline?.current ? "location" : undefined
+                                  }
+                                  className={cn(
+                                    "flex h-7 w-full cursor-pointer items-center rounded-[var(--control-radius)] px-2 text-left text-xs text-muted-foreground/80 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    entry.id === outline?.current && "font-medium text-foreground",
+                                  )}
+                                  onClick={() => jump(entry.id)}
+                                  title={entry.hint}
+                                  type="button"
+                                >
+                                  <span className="truncate">{entry.label}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </nav>
@@ -311,7 +417,9 @@ export const settingsPlugin = builtin(
                       {list.map((section) => (
                         <Button
                           key={section.id}
-                          onClick={() => open(section.id)}
+                          onClick={() =>
+                            section.id === current?.id ? undefined : leave(() => open(section.id))
+                          }
                           size="xs"
                           variant={section.id === current?.id ? "secondary" : "ghost"}
                         >
@@ -319,6 +427,33 @@ export const settingsPlugin = builtin(
                         </Button>
                       ))}
                     </div>
+                    {entries.length === 0 ? null : (
+                      // Where the navigation folds away, the outline is a menu (D1623).
+                      <div className="sticky top-0 z-10 -my-4 bg-background py-2 md:hidden">
+                        <Menu>
+                          <MenuTrigger render={<Button size="xs" variant="outline" />}>
+                            Jump to section
+                            <ChevronDownIcon className="size-3.5" />
+                          </MenuTrigger>
+                          <MenuPopup align="start">
+                            {entries.map((entry) => (
+                              <MenuItem key={entry.id} onClick={() => jump(entry.id)}>
+                                <span
+                                  className={cn(entry.id === outline?.current && "font-medium")}
+                                >
+                                  {entry.label}
+                                </span>
+                                {entry.hint === undefined ? null : (
+                                  <span className="ms-2 font-mono text-xs text-muted-foreground">
+                                    {entry.hint}
+                                  </span>
+                                )}
+                              </MenuItem>
+                            ))}
+                          </MenuPopup>
+                        </Menu>
+                      </div>
+                    )}
                     {Section === undefined ? null : <Section key={current?.id} />}
                   </div>
                 </div>

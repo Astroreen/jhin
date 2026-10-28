@@ -17,10 +17,11 @@ const KEYS = {
   project: "j",
   panel: "p",
   section: "s",
+  anchor: "a",
   mode: "m",
 } as const satisfies Record<keyof Route, string>;
 
-/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&j=<project>&p=<panel>&s=<section>&m=<mode>`. */
+/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&j=<project>&p=<panel>&s=<section>&a=<anchor>&m=<mode>`. */
 export function readRoute(hash: string): Route {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const route: Record<string, string> = {};
@@ -43,8 +44,8 @@ export function writeRoute(route: Route): string {
 export const navigationPlugin = builtin(
   "jhin.navigation",
   {
-    // 1.1: `navigate(route, {replace})` (t3-parity.md D1421).
-    provides: { [NAVIGATION_CAPABILITY]: "1.1.0" },
+    // 1.1: `navigate(route, {replace})` (t3-parity.md D1421); 1.2: `Route.anchor` (config-ui.md D1628).
+    provides: { [NAVIGATION_CAPABILITY]: "1.2.0" },
     optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
   },
   definePlugin({

@@ -78,8 +78,10 @@ test("D80: edits a config section as a form and saves it to the node file, keepi
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Demo/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Demo", exact: true })
+    .click();
 
   const section = page.getByRole("region", { name: "Demo" });
   // D81: without a description in the schema, the comment above the key describes it.
@@ -184,8 +186,10 @@ test("D477: edits the project file, which wins over the node file", async ({ pag
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Demo/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Demo", exact: true })
+    .click();
   await page.getByRole("combobox", { name: "Config file" }).click();
   await page.getByRole("option", { name: "Project file" }).click();
 
@@ -217,8 +221,10 @@ test("D479: edits keybinding rules as a list of groups", async ({ page }, info) 
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Keybindings/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Keybindings", exact: true })
+    .click();
 
   const section = page.getByRole("region", { name: "Keybindings" });
   await section.getByRole("button", { name: "Add" }).click();
@@ -269,8 +275,10 @@ test("D480, D481: renames a record key in place and shows a field for its siblin
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Demo/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Demo", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Demo" });
 
   // D481: "Instructions" shows only while Mode is custom.
@@ -308,8 +316,10 @@ test("D483, D484: a change made elsewhere reaches the open page, keeping the edi
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Demo/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Demo", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Demo" });
   await expect(section.getByRole("textbox", { name: "Label" })).toHaveValue("first");
 
@@ -354,8 +364,10 @@ test("D1172–D1173: the Threads section keeps threads with a PR, and per projec
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Threads/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Threads", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Threads" });
   await expect(
     section.getByText(
@@ -386,8 +398,10 @@ test("D1126: T3's worktree branch naming settings, each field shown for its mode
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Source control/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Source control", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Source control" });
 
   const mode = section.getByRole("combobox", { name: "Worktree branch naming" });
@@ -436,15 +450,18 @@ test("D1463: T3's project scope edits a project's own settings, showing what it 
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config" })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Source control/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Source control", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Source control" });
 
   // All projects: the node's own settings, the record of projects is no field.
-  await expect(section.getByText("Applying settings for")).toBeVisible();
+  // The scope is the page's, above every section (D1622).
+  await expect(page.getByText("Applying settings for")).toBeVisible();
   await expect(section.getByRole("group", { name: "Settings per project" })).toHaveCount(0);
 
-  await section.getByRole("button", { name: "Project scope: All projects" }).click();
+  await page.getByRole("button", { name: "Project scope: All projects" }).click();
   await page.getByRole("menuitemradio", { name: "acme" }).click();
   // The project's keys edit its entry; the rest are the node's alone.
   const naming = section.getByRole("combobox", { name: "Worktree branch naming" });
@@ -467,7 +484,7 @@ test("D1463: T3's project scope edits a project's own settings, showing what it 
   await page.getByRole("option", { name: "Off", exact: true }).click();
   // The whole scoped form in one picture, with the layers of a setting open.
   await page.setViewportSize({ width: 1280, height: 1300 });
-  await section.getByText("Applying settings for").scrollIntoViewIfNeeded();
+  await page.getByText("Applying settings for").scrollIntoViewIfNeeded();
   await section.getByRole("button", { name: /^Worktree branch naming: Project override/ }).click();
   const layers = page.getByRole("list", { name: "Where Worktree branch naming comes from" });
   await expect(layers.getByRole("listitem")).toHaveText([
@@ -514,4 +531,93 @@ test("D1463: T3's project scope edits a project's own settings, showing what it 
       section: "jhin.source-control",
     });
   expect(reset.layers.node?.["projects"]).toBeUndefined();
+});
+
+test("D1622–D1626: every section on one page, jumped to from the navigation, edits kept and named", async ({
+  page,
+}, info) => {
+  node = await startNode({ setup: writeDemoPlugin });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const opened = Date.now();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config", exact: true })
+    .click();
+  // No section picker: the sections are listed under the page in the navigation (D1623).
+  await expect(page.getByRole("combobox", { name: "Config section" })).toHaveCount(0);
+  const outline = page.getByRole("list", { name: "Node config outline" });
+  const entries = outline.getByRole("button");
+  await expect(entries.first()).toBeVisible();
+  const titles = await entries.allTextContents();
+  expect(titles.length).toBeGreaterThan(5);
+  // The first section's form, read with every other section in one call (D1624).
+  const first = page.getByRole("region", { name: titles[0], exact: true });
+  await expect(first.getByRole("button", { name: "Save" })).toBeVisible();
+  info.annotations.push({
+    type: "timing",
+    description: `Node config: first section's form shown ${Date.now() - opened} ms after the click`,
+  });
+
+  // A click brings the section into view, focuses its heading and names it in the route (D1628).
+  await outline.getByRole("button", { name: "Demo", exact: true }).click();
+  const demo = page.getByRole("region", { name: "Demo", exact: true });
+  await expect(demo.getByRole("heading", { name: "Demo" })).toBeFocused();
+  await expect(demo.getByRole("heading", { name: "Demo" })).toBeInViewport();
+  await expect(page).toHaveURL(/[#&]a=acme\.demo(&|$)/);
+  await expect(outline.getByRole("button", { name: "Demo", exact: true })).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  const desktop = info.outputPath("config-one-page.png");
+  await page.screenshot({ path: desktop });
+  await info.attach("config-one-page", { path: desktop, contentType: "image/png" });
+
+  // A reload opens at the section the route names.
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "Demo", exact: true }).getByRole("heading", { name: "Demo" }),
+  ).toBeInViewport();
+
+  // An unsaved edit belongs to its section and survives scrolling away and back (D1626).
+  await demo.getByRole("textbox", { name: "Label" }).fill("edited");
+  const last = titles[titles.length - 1]!;
+  await outline.getByRole("button", { name: last, exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: last, exact: true }).getByRole("heading", { name: last }),
+  ).toBeInViewport();
+  await expect(demo.getByRole("heading", { name: "Demo" })).not.toBeInViewport();
+  await outline.getByRole("button", { name: "Demo", exact: true }).click();
+  await expect(demo.getByRole("textbox", { name: "Label" })).toHaveValue("edited");
+
+  // Leaving the page asks first, naming the section that would lose its edits.
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Nodes", exact: true })
+    .click();
+  const leave = page.getByRole("alertdialog", { name: "Discard the changes to Demo?" });
+  await leave.getByRole("button", { name: "Cancel" }).click();
+  await expect(demo.getByRole("textbox", { name: "Label" })).toHaveValue("edited");
+  // So does choosing the other file.
+  await page.getByRole("combobox", { name: "Config file" }).click();
+  await page.getByRole("option", { name: "Project file" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Discard the changes to Demo?" })
+    .getByRole("button", { name: "Discard" })
+    .click();
+  await expect(page.getByRole("combobox", { name: "Config file" })).toHaveText("Project file");
+  await expect(demo.getByRole("textbox", { name: "Label" })).toHaveValue("");
+
+  // Narrow, the navigation folds away and the outline is a menu (D1623).
+  await page.setViewportSize({ width: 420, height: 860 });
+  await page.getByRole("button", { name: "Jump to section" }).click();
+  await expect(page.getByRole("menuitem", { name: /^Demo/ })).toBeVisible();
+  const narrow = info.outputPath("config-one-page-narrow.png");
+  await page.screenshot({ path: narrow });
+  await info.attach("config-one-page-narrow", { path: narrow, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: new RegExp(`^${last}`) }).click();
+  await expect(
+    page.getByRole("region", { name: last, exact: true }).getByRole("heading", { name: last }),
+  ).toBeInViewport();
 });

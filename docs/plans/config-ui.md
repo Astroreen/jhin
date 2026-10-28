@@ -354,7 +354,7 @@ The owner asked (2026-10-24) for the node config page to stop making them
 pick one section from a dropdown and wait for it. The page shows every section
 at once, with the section list under the page's name in the settings
 navigation, and a click scrolls to the section. Decisions D1621–D1640
-(D1621–D1627 used so far); the speed part continues `loading.md`. It builds on
+(D1621–D1629 used so far); the speed part continues `loading.md`. It builds on
 W42's project scope (D1463) and must land on top of it, never undo it.
 
 - **D1621. Why one section is slow is measured before anything changes.**
@@ -408,6 +408,27 @@ W42's project scope (D1463) and must land on top of it, never undo it.
 - **D1627. Nothing of the form itself changes.** Fields, validation, layers,
   comments and the plugin controls stay as W16 built them. Only where the
   forms are placed and how they are loaded changes.
+- **D1628. The section is a field of the route.** The URL fragment already
+  holds the route (`#p=settings&s=node-config`), so D1623's hash is its new
+  field `a` (`Route.anchor`, `client.navigation@1.2`): `#p=settings&s=node-config&a=jhin.web-ui`.
+  Opening another settings section or leaving the settings page drops it.
+  A jump and the section in view replace the history entry rather than add
+  one, so Back leaves the page as before.
+- **D1629. A settings page contributes an outline.** `ui.settings@1.1`
+  adds `setOutline(section, outline)` (a disposable): `entries` (`{ id,
+  label, hint? }`, ids `<section>/<name>`), the `current` entry, `select(id)`
+  and an optional `confirmLeave()`. While the page is open, the settings
+  shell lists the entries under its navigation item and in the narrow
+  "Jump to section" menu, marks `current`, keeps the route's `anchor` in step
+  with it, selects the anchor's entry once when the outline arrives, and asks
+  `confirmLeave()` before it opens another section or closes the settings
+  (its navigation, Back, Escape). A page calls `setOutline` again as its
+  current entry changes; the latest call wins. The node config page is its
+  first user (D1623, D1626); a reload or a closed tab with unsaved edits gets
+  the browser's own question (`beforeunload`). A section waiting off screen
+  (D1625) keeps its field titles and descriptions in a `hidden="until-found"`
+  block, so the browser's find reaches them and renders the section when it
+  matches (`beforematch`).
 
 ## How to write a config schema (for plugin authors)
 

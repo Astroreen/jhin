@@ -188,8 +188,10 @@ test("D131, D132: the owner changes a node's icon, from its menu or its node con
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Node config", exact: true })
     .click();
-  await page.getByRole("combobox", { name: "Config section" }).click();
-  await page.getByRole("option", { name: /^Host\s*jhin\.host/ }).click();
+  await page
+    .getByRole("list", { name: "Node config outline" })
+    .getByRole("button", { name: "Host", exact: true })
+    .click();
   const section = page.getByRole("region", { name: "Host", exact: true });
   const machine = section.getByRole("combobox", { name: "Machine" });
   await expect(machine).toContainText("Laptop");
