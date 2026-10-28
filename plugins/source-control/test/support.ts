@@ -259,6 +259,8 @@ function recordingLogger(
 interface FakeTerminals {
   readonly opened: OpenTerminalInput[];
   readonly closed: string[];
+  /** The threads whose idle terminals were asked to close (D1669). */
+  readonly idleClosed: string[];
   /** What was typed into each terminal, by id. */
   readonly typedInto: string[];
   /** Holds every open until the returned function is called; resolves once one waits. */
@@ -279,6 +281,7 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
   live.serve(TERMINAL_STREAM_PREFIX, streams);
   const opened: OpenTerminalInput[] = [];
   const closed: string[] = [];
+  const idleClosed: string[] = [];
   const typedInto: string[] = [];
   let gate: { reached: () => void; open: Promise<void> } | undefined;
   let failure: Error | undefined;
@@ -332,6 +335,10 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
       streams.append(terminalStream(threadId, terminalId), TerminalEvents.closed, {});
       return 1;
     },
+    closeIdle: async (threadId) => {
+      idleClosed.push(threadId);
+      return 0;
+    },
     list: () => [],
     get: () => undefined,
   };
@@ -343,6 +350,7 @@ function fakeTerminals(live: LiveStreams): { sessions: TerminalSessions; seen: F
     seen: {
       opened,
       closed,
+      idleClosed,
       typedInto,
       holdOpens: () => {
         const reached = Promise.withResolvers<void>();

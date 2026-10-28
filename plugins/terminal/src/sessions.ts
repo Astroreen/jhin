@@ -106,6 +106,8 @@ interface Session {
   kept: { lineBreaks: number; bytes: number; endsWithNewline: boolean };
   /** Resolves when the current process exited. */
   exited: Promise<void>;
+  /** Counts what it printed and what was typed into it: T3's activity mark (D1669). */
+  activity: number;
   stop: (() => void)[];
 }
 
@@ -132,6 +134,7 @@ function defaultShell(): string {
 /** The node's terminals: one PTY process per session, its output in the session's live stream. */
 export function createSessions(options: SessionOptions): TerminalSessions & {
   readonly instance: string;
+  closeIdle(threadId: string, terminalId?: string): Promise<number>;
   dispose(): Promise<void>;
 } {
   const { streams, log } = options;
@@ -341,6 +344,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     session.stop = [
       child.onData((data) => {
         if (session.process !== child || session.closed) return;
+        session.activity += 1;
         session.pending += data;
         if (session.pending.length >= MAX_CHUNK_LENGTH) flushOutput(session);
         else session.flush ??= setImmediate(() => flushOutput(session));
@@ -619,6 +623,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         flush: undefined,
         kept: { lineBreaks: 0, bytes: 0, endsWithNewline: false },
         exited: Promise.resolve(),
+        activity: 0,
         stop: [],
       };
       session.cwd = input.cwd;
@@ -642,6 +647,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     },
     write(input) {
       const session = running(input.threadId, input.terminalId);
+      session.activity += 1;
       try {
         session.process.write(input.data);
       } catch (error) {
@@ -662,6 +668,33 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       );
       await Promise.all(matching.map((session) => closeSession(session)));
       return matching.length;
+    },
+    async closeIdle(threadId, terminalId) {
+      const candidates = [...sessions.values()].filter(
+        (session) =>
+          session.threadId === threadId &&
+          session.process !== undefined &&
+          !session.closed &&
+          (terminalId === undefined || session.terminalId === terminalId),
+      );
+      if (candidates.length === 0 || options.processTable === undefined) return 0;
+      const marks = new Map(candidates.map((session) => [session, session.activity]));
+      // Read now rather than trusting the last poll: a command started since keeps its terminal.
+      let table: ProcessTable;
+      try {
+        table = await options.processTable();
+      } catch (error) {
+        log.warn("failed to close idle terminals", { threadId, error: String(error) });
+        return 0;
+      }
+      const idle = candidates.filter(
+        (session) =>
+          session.process !== undefined &&
+          !subprocessOf(table, session.process.pid).running &&
+          session.activity === marks.get(session),
+      );
+      await Promise.all(idle.map((session) => closeSession(session)));
+      return idle.length;
     },
     list(threadId) {
       return [...sessions.values()]

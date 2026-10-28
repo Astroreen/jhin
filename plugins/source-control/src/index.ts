@@ -149,6 +149,8 @@ import {
   WorktreeCleanupConfig,
   cleanupEnabled,
   orphanEntries,
+  measureFolder,
+  MEASURE_TIMEOUT_MS,
   resolveWorktreeCleanup,
   exists,
   judge,
@@ -1416,12 +1418,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const before = settledSeen.get(id);
         settledSeen.set(id, settledAt);
         if (settledAt !== null && settledKnown && before !== settledAt) {
-          void runSettleScript(id, settledAt).catch((error: unknown) =>
-            context.log.warn("could not run a settle script", {
-              threadId: id,
-              error: String(error),
-            }),
-          );
+          // T3's cleanUpSettledThread: its idle terminals close first, then its script (D1669).
+          void closeIdleTerminals(id)
+            .then(() => runSettleScript(id, settledAt))
+            .catch((error: unknown) =>
+              context.log.warn("could not run a settle script", {
+                threadId: id,
+                error: String(error),
+              }),
+            );
         }
         const lastTurn = payload?.lastTurn as { turnId?: string; status?: string } | undefined;
         if (typeof projectId !== "string" || lastTurn?.status === undefined) return;
@@ -1622,6 +1627,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return Number.isNaN(parsed) ? fallback : parsed;
   };
 
+  /** Orphans' sizes kept between sweeps (T3's `orphanSizes`, D1670). */
+  const orphanSizes = new Map<string, number | null>();
   /** T3's `cleanWorktrees`: decides each managed worktree a thread works or worked in. */
   async function sweepWorktrees(): Promise<CleanupReport> {
     const entries: CleanupEntry[] = [];
@@ -1632,6 +1639,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         kept: entries.filter((entry) => entry.outcome === "kept").length,
         failed: entries.filter((entry) => entry.outcome === "failed").length,
       },
+      // T3's bytesFreed: what the worktrees took before they were removed (D1670).
+      bytesFreed: entries.reduce(
+        (sum, entry) => sum + (entry.outcome === "removed" ? (entry.bytes ?? 0) : 0),
+        0,
+      ),
     });
     if (!anyCleanupEnabled() || stopped) return report();
     const root = await realPath(worktreesRoot(config().worktreesDirectory, hostPaths.home));
@@ -1765,6 +1777,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         }
         // T3's blockedSinceCheck: under the project's worktree lock, the threads there
         // are read again, so one that started a turn or came in since is not robbed.
+        let bytes: number | null = null;
         const blocked = await exclusive(candidate.projectId, async () => {
           const users = await worktreeUsers({ strict: true }).catch(() => undefined);
           if (users === undefined) return "Threads could not be read.";
@@ -1798,6 +1811,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               return "Thread is running or has pending work.";
             }
           }
+          // Measured just before it goes, as T3's sweep does (D1670).
+          bytes = await measureFolder(candidate.path, Date.now() + MEASURE_TIMEOUT_MS);
           const projectGit = createGit(config().gitPath, candidate.projectPath);
           await projectGit(["worktree", "remove", "--force", "--", candidate.path], {
             timeoutMs: 300_000,
@@ -1814,7 +1829,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const key = deletedKeys.get(candidate.path);
         if (key !== undefined) await kv.delete(NAMESPACE, key);
         context.log.info("removed a worktree", { path: candidate.path, reason: verdict.remove });
-        entries.push({ ...entry, outcome: "removed", reason: verdict.remove });
+        entries.push({ ...entry, bytes, outcome: "removed", reason: verdict.remove });
       } catch (error) {
         entries.push({ ...entry, outcome: "failed", reason: (error as Error).message });
       }
@@ -1823,7 +1838,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (!stopped) {
       const projectRoots = await Promise.all([...projectPath.values()].map(realPath));
       // The report is kept and sent whole: a crowded worktrees directory lists its first ones.
-      const orphans = await orphanEntries(root, referenced, projectRoots, Date.now());
+      const orphans = await orphanEntries(root, referenced, projectRoots, Date.now(), orphanSizes);
       entries.push(...orphans.slice(0, MAX_ORPHANS));
       if (orphans.length > MAX_ORPHANS) {
         context.log.info("listed the first orphaned worktree folders", {
@@ -4070,6 +4085,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   let settledKnown = false;
   /** The settling each thread's script was claimed for, before anything is awaited. */
   const settleClaims = new Map<string, string>();
+  /** T3's closeIdle for a thread that settled (D1669); a node without terminals has none. */
+  async function closeIdleTerminals(threadId: string) {
+    const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+    await terminals
+      ?.closeIdle?.(threadId)
+      .catch((error: unknown) =>
+        context.log.warn("failed to close idle terminals", { threadId, error: String(error) }),
+      );
+  }
   async function runSettleScript(threadId: string, settledAt: string) {
     if (settleClaims.get(threadId) === settledAt) return;
     settleClaims.set(threadId, settledAt);

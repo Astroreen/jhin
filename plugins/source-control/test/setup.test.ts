@@ -117,7 +117,7 @@ describe("scripts.run (D1472)", () => {
   });
 });
 
-describe("settle scripts (D1476)", () => {
+describe("settle scripts (D1476, D1669)", () => {
   it("runs the settle script in a settled thread's own worktree, once per settling", async () => {
     const sc = await node({ watch: false }, { terminals: true });
     const projectId = await sc.project(repository());
@@ -135,6 +135,8 @@ describe("settle scripts (D1476)", () => {
     await sc.client.call("threads.settle", { threadId: local.id });
     await sc.client.call("threads.settle", { threadId: worktree.id });
     await ran;
+    // Its idle terminals were closed first, as every settling thread's are (D1669).
+    expect(sc.terminals!.idleClosed).toEqual([local.id, worktree.id]);
     const opened = sc.terminals!.opened.filter((entry) => entry.terminalId.startsWith("settle-"));
     // Only the thread with a worktree of its own: the project's checkout is shared.
     expect(opened).toEqual([

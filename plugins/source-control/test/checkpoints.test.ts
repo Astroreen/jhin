@@ -12,6 +12,7 @@ import {
   checkpointFiles,
   checkpointRef,
   restoreCheckpoint,
+  writeWorkingTree,
 } from "../src/checkpoints.ts";
 import { git, node, repository, temp, write, type Node } from "./support.ts";
 
@@ -452,5 +453,41 @@ describe("checkpoint git operations", () => {
     // The index is HEAD's again: the restored file is untracked, as it was.
     expect(git(dir, "status", "--porcelain")).toBe("?? kept.txt\n");
     expect(await restoreCheckpoint(run, dir, checkpointRef("t", 9))).toBe(false);
+  });
+});
+
+describe("T3's fast path through the real index (D1671)", () => {
+  /** The tree of the working tree as git builds it from nothing: the slow path's answer. */
+  const plainTree = (dir: string) => {
+    const index = Path.join(temp("jhin-plain-index-"), "index");
+    const env = { ...process.env, GIT_INDEX_FILE: index };
+    execFileSync("git", ["read-tree", "HEAD"], { cwd: dir, env });
+    execFileSync("git", ["add", "-A", "--", "."], { cwd: dir, env });
+    return execFileSync("git", ["write-tree"], { cwd: dir, env, encoding: "utf8" }).trim();
+  };
+
+  it("writes the same tree as a fresh index, staged, edited and untracked files alike", async () => {
+    const dir = repository();
+    write(dir, "staged.txt", "staged\n");
+    git(dir, "add", "staged.txt");
+    write(dir, "README.md", "edited\n");
+    write(dir, "new/untracked.txt", "new\n");
+    git(dir, "rm", "--quiet", "--cached", "README.md");
+    const realIndex = Fs.readFileSync(Path.join(dir, ".git", "index"));
+    const tree = await writeWorkingTree(createGit("git", dir), Path.join(dir, ".git"));
+    expect(tree).toBe(plainTree(dir));
+    // The user's own index is untouched.
+    expect(Fs.readFileSync(Path.join(dir, ".git", "index")).equals(realIndex)).toBe(true);
+  });
+
+  it("falls back to a fresh index when the user flagged an entry assume-unchanged", async () => {
+    const dir = repository();
+    git(dir, "update-index", "--assume-unchanged", "README.md");
+    write(dir, "README.md", "changed behind git's back\n");
+    const tree = await writeWorkingTree(createGit("git", dir), Path.join(dir, ".git"));
+    // A copy of the real index would have kept the old README.
+    expect(
+      execFileSync("git", ["cat-file", "-p", `${tree}:README.md`], { cwd: dir, encoding: "utf8" }),
+    ).toBe("changed behind git's back\n");
   });
 });

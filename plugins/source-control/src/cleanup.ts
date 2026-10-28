@@ -131,6 +131,8 @@ export const CleanupEntry = z.object({
   threadId: z.string().optional(),
   outcome: z.enum(["removed", "kept", "failed"]),
   reason: z.string(),
+  /** Its folder's size, `null` when it could not be measured (D1670). */
+  bytes: z.number().int().nonnegative().nullable().optional(),
 });
 export type CleanupEntry = z.output<typeof CleanupEntry>;
 
@@ -143,6 +145,8 @@ export const CleanupReport = z.object({
   }),
   /** When the sweep ended (D1469); absent from a sweep no rule let run. */
   finishedAt: z.string().optional(),
+  /** What the removed worktrees took (D1670); absent from a report kept before it. */
+  bytesFreed: z.number().int().nonnegative().optional(),
 });
 export type CleanupReport = z.output<typeof CleanupReport>;
 
@@ -380,6 +384,39 @@ export async function judge(
   );
 }
 
+/** How long one measurement may take (T3's `measureWorktree` timeout). */
+export const MEASURE_TIMEOUT_MS = 30_000;
+const MAX_MEASURED_ENTRIES = 2_000_000;
+
+/**
+ * T3's measureWorktree (D1670): the bytes of the files under `folder`, links not followed,
+ * or `null` past 2,000,000 entries or `deadline` (ms since the epoch).
+ */
+export async function measureFolder(folder: string, deadline: number): Promise<number | null> {
+  try {
+    const root = await Fs.realpath(folder);
+    const pending = [root];
+    let entries = 1;
+    let bytes = 0;
+    while (pending.length > 0) {
+      if (Date.now() > deadline) return null;
+      const target = pending.pop()!;
+      const stat = await Fs.lstat(target);
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isFile()) bytes += stat.size;
+      else if (stat.isDirectory()) {
+        const names = await Fs.readdir(target);
+        entries += names.length;
+        if (entries > MAX_MEASURED_ENTRIES) return null;
+        for (const name of names) pending.push(Path.join(target, name));
+      }
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
 /** Nothing changed in a folder for this long before it is reported as an orphan (T3's grace). */
 const ORPHAN_GRACE_MS = 3_600_000;
 
@@ -394,7 +431,12 @@ export async function orphanEntries(
   referenced: ReadonlySet<string>,
   projectRoots: readonly string[],
   now: number,
+  /** Sizes measured by earlier sweeps, by path; this sweep's are added (D1670). */
+  sizes: Map<string, number | null> = new Map(),
 ): Promise<CleanupEntry[]> {
+  // The first walk reaches its own limit; later ones share what is left of the sweep's budget.
+  const budgetEnd = Date.now() + MEASURE_TIMEOUT_MS;
+  let first = true;
   const inside = (folder: string, path: string) =>
     path === folder || path.startsWith(`${folder}${Path.sep}`);
   const directories = async (parent: string) =>
@@ -412,8 +454,20 @@ export async function orphanEntries(
     }
     const stat = await Fs.stat(folder).catch(() => undefined);
     if (stat === undefined || stat.mtimeMs > now - ORPHAN_GRACE_MS) return;
+    if (!sizes.has(folder) && (first || Date.now() < budgetEnd)) {
+      const own = first;
+      const measured = await measureFolder(
+        folder,
+        own ? Date.now() + MEASURE_TIMEOUT_MS : budgetEnd,
+      );
+      first = false;
+      // The first walk reached its own limit: even unmeasurable, it is kept, so it does not
+      // take every sweep's budget again (T3). A walk cut short by the shared budget is retried.
+      if (own || measured !== null || Date.now() < budgetEnd) sizes.set(folder, measured);
+    }
     entries.push({
       path: folder,
+      bytes: sizes.get(folder) ?? null,
       outcome: "kept",
       reason: (await gitOf(folder))?.isFile()
         ? "No thread uses this worktree."

@@ -174,4 +174,10 @@ export interface TerminalSessions {
    * (D949: the preview's local servers are the ones terminals started).
    */
   processIds?(threadId: string, terminalId: string): readonly number[];
+  /**
+   * T3's closeIdle: closes the thread's running terminals (or `terminalId`) under whose
+   * shell no process runs, read now, and that printed and were typed nothing meanwhile;
+   * resolves with how many it closed. Since 1.4 (source-control.md D1669).
+   */
+  closeIdle?(threadId: string, terminalId?: string): Promise<number>;
 }

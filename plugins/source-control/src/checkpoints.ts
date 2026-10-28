@@ -2,8 +2,8 @@
 // THIRD_PARTY_NOTICES.md): apps/server/src/vcs/GitVcsDriver.ts (captureCheckpoint,
 // hasCheckpointRef, restoreCheckpoint, diffCheckpoints, listAuthoredPaths,
 // deleteCheckpointRefs) and apps/server/src/checkpointing/Diffs.ts (dropping what
-// came from HEAD moving). T3's fast path that reuses the real index and its
-// sparse-checkout handling are not ported.
+// came from HEAD moving), with T3's fast path that reuses the real index (D1671); its
+// sparse-checkout handling is not ported.
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
@@ -62,7 +62,12 @@ export async function writeWorkingTree(
   const index = Path.join(commonDir, `jhin-checkpoint-index-${Crypto.randomUUID()}`);
   const env = { GIT_INDEX_FILE: index };
   try {
-    if (await headExists(git)) await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
+    if (await headExists(git)) {
+      if (!(await reuseRealIndex(git, index, env))) {
+        await Promise.all([Fs.rm(index, { force: true }), Fs.rm(`${index}.lock`, { force: true })]);
+        await git([...INDEX_CONFIG, "read-tree", "HEAD"], { env });
+      }
+    }
     // An excluded folder is left out whole, committed or not, so neither its
     // edits nor its commits change the tree.
     if (exclude.length > 0) {
@@ -79,6 +84,49 @@ export async function writeWorkingTree(
     return tree;
   } finally {
     await Promise.all([Fs.rm(index, { force: true }), Fs.rm(`${index}.lock`, { force: true })]);
+  }
+}
+
+/**
+ * T3's fast path (D1671): the scratch index starts as the real one reset to `HEAD`, its stat
+ * data kept, so `add -A` hashes only what changed. `false` when it cannot be used: no index,
+ * a sparse checkout, or an entry the user flagged assume-unchanged or skip-worktree.
+ */
+async function reuseRealIndex(
+  git: Git,
+  index: string,
+  env: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  try {
+    const sparse = await git(["config", "--bool", "core.sparseCheckout"], { ok: [0, 1] });
+    if (sparse.stdout.trim() === "true") return false;
+    const real = (
+      await git(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+    ).stdout.trim();
+    const { mtimeMs } = await Fs.stat(real);
+    // Below the real index's time even if it was rounded up, so git's racy check holds.
+    const time = Math.floor((mtimeMs - 1) / 1000);
+    if (time <= 0) return false;
+    await Fs.copyFile(real, index);
+    await git([...INDEX_CONFIG, "read-tree", "--reset", "HEAD"], { env });
+    // read-tree may write the index again: its time goes back afterwards.
+    await Fs.utimes(index, time, time);
+    // `ls-files -v` tags each entry: lowercase for assume-unchanged, S for skip-worktree.
+    let flagged = false;
+    let recordStart = true;
+    await git([...INDEX_CONFIG, "ls-files", "-v", "-z"], {
+      env,
+      onOutput: (stream, text) => {
+        if (stream !== "stdout" || flagged) return;
+        for (const char of text) {
+          if (recordStart && ((char >= "a" && char <= "z") || char === "S")) flagged = true;
+          recordStart = char === "\0";
+        }
+      },
+    });
+    return !flagged;
+  } catch {
+    return false;
   }
 }
 

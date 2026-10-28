@@ -2002,10 +2002,54 @@ the quick action's "Publish repository").
   "Setup Required" card for a forge that is not signed in needs the forges'
   discovery Jhin lacks; a forge's refusal shows as "Publish failed".
 
+#### W42's leftovers: idle terminals and the bytes a cleanup frees
+
+At T3 Code `eb7b35ac`: `apps/server/src/terminal/Manager.ts` (`closeIdle`),
+`apps/server/src/orchestration-v2/ThreadSettlementService.ts`
+(`cleanUpSettledThread`), `apps/server/src/storageCleanup.ts`
+(`measureWorktree`, the orphans' measurement budget, `bytesFreed`) and
+`apps/web/src/components/settings/StorageSettings.tsx`.
+
+- **D1669. A settling thread's idle terminals close**, as T3's
+  `cleanUpSettledThread` calls `closeIdle` before the settle script, for
+  every settling and not only one with a script. `terminal.sessions`
+  becomes 1.4 with `closeIdle(threadId, terminalId?)` and the command
+  `terminals.close-idle` (`terminals.write`; `{ threadId, terminalId? }` →
+  `{ closed }`): it reads the process table now rather than trusting the
+  last poll, and closes a running terminal of the thread only when no
+  process runs under its shell and it printed and was typed nothing since
+  the read began (T3's activity mark). A node that cannot read its
+  process table closes nothing. Source control calls it when it sees a
+  thread settle (D1476's trigger), then runs the settle script.
+- **D1670. The bytes a cleanup frees.** A report entry carries `bytes`
+  (its folder's size, `null` when not measured) and the report
+  `bytesFreed` (the removed ones' sum), as T3's report: a worktree is
+  measured just before it is removed, an orphan (D1470) within the sweep's
+  budget of 30 seconds (the first one gets its own 30 seconds, as T3 lets
+  it reach its own limit), sizes of orphans kept for the next sweeps. A
+  measurement walks the folder without following links and gives up
+  (`null`) past 2,000,000 entries or its time. The Storage page says T3's "Last run <time>. <size> recovered."
+  and shows an entry's size at the right of its row (T3's `formatBytes`).
+
+#### Checkpoints: T3's fast path
+
+- **D1671. A checkpoint reuses the real index**, as T3's
+  `captureCheckpoint` (`apps/server/src/vcs/GitVcsDriver.ts`): with a
+  `HEAD`, the scratch index starts as a copy of the repository's own
+  (`rev-parse --git-path index`), is reset to `HEAD` with `read-tree --reset`
+  (which keeps the stat data of unchanged files) and gets the real index's
+  time back, a second below it, so git's racy check holds; `add -A` then
+  hashes only the files that changed instead of every file. The copy is
+  dropped for the old path (`read-tree HEAD` into an empty index) when the
+  index cannot be read, when `ls-files -v` shows an entry the user flagged
+  (assume-unchanged, or skip-worktree outside a sparse checkout), or in a
+  sparse checkout (T3's sparse handling stays Deferred). The tree written is
+  the same either way.
+
 ## Deferred
 
-- Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
-  the scratch one, sparse checkouts, nested checkpoint scopes (a subagent's
+- Checkpoints, from W3 (D240; T3's fast path through the real index since
+  D1671): sparse checkouts (the fast path's and the rebuild's), nested checkpoint scopes (a subagent's
   own checkpoints), retries on `index.lock` contention and T3's per-path
   batching of a long turn diff (W22 gave the changed files card T3's file
   icons; its per-file context menu is D905).
@@ -2028,14 +2072,11 @@ the quick action's "Publish repository").
   (`preview.md`'s `canConfigure` item), so such a client gets the node's
   refusal in a toast. T3's other places for it (the thread details card's
   panel mode, the compact header's menu) are not ported.
-- Settle scripts (D1476): T3 closes a settled thread's idle terminals before
-  the script runs (`closeIdle`); Jhin leaves them open.
 - Branch naming (D1126, D1127; a text area and per project since D1466):
   the images themselves do not reach the writer, only their names.
 - Worktree cleanup (D1128–D1130; per project, "Last run" and the orphan
-  report since D1468–D1470): the bytes a sweep frees and an orphan's size
-  (T3 measures them, with a 30 s budget per sweep), and the checks for a
-  subagent chain sharing a worktree.
+  report since D1468–D1470, the bytes it frees since D1670): the checks for
+  a subagent chain sharing a worktree.
 - Worktree submodules (D1134): those of a pull request's worktree (D902);
   stopping a submodule
   checkout that a cancelled setup leaves running; showing a recreated
