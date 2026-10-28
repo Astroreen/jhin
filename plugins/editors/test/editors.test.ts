@@ -182,8 +182,11 @@ describe("the editors plugin", () => {
             thread: z.object({ projectId: z.string(), worktreePath: z.string().optional() }),
           }),
           handler: ({ threadId }) => {
+            if (threadId === "broken") throw new Error("storage unreadable");
             const thread = threads[threadId];
-            if (thread === undefined) throw new Error(`No thread ${threadId}`);
+            if (thread === undefined) {
+              throw Object.assign(new Error(`No thread ${threadId}`), { code: "THREAD_NOT_FOUND" });
+            }
             return { thread };
           },
         });
@@ -248,6 +251,8 @@ describe("the editors plugin", () => {
     expect(await open("t2")).toEqual({ editor: "vscode", path: "/work/app/src/a.ts" });
     await expect(open("other")).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
     await expect(open("missing")).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    // Any other failure of reading the thread is that failure, not a missing thread.
+    await expect(open("broken")).rejects.toThrow("storage unreadable");
     await expect(open("t1", "../../app/secret")).rejects.toMatchObject({
       code: "PATH_OUTSIDE_PROJECT",
     });

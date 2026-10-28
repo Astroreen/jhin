@@ -497,12 +497,19 @@ export const rightPanelPlugin = builtin(
         if (restore === undefined) return false;
         const kind = kinds.get(restore.surface.kind)?.kind;
         // Its kind is not here now (its plugin is off): it waits last, as T3's `defer`.
-        const reopened =
-          kind === undefined
-            ? false
-            : kind.reopen === undefined
-              ? (open(restore.place, restore.surface), true)
-              : await kind.reopen(restore.place, restore.surface, restore.kept);
+        let reopened: boolean;
+        try {
+          reopened =
+            kind === undefined
+              ? false
+              : kind.reopen === undefined
+                ? (open(restore.place, restore.surface), true)
+                : await kind.reopen(restore.place, restore.surface, restore.kept);
+        } catch (error) {
+          // A reopen that failed waits last, so the others stay reachable.
+          setClosedViews(defer(closedViews, restore.id));
+          throw error;
+        }
         if (!reopened) {
           setClosedViews(defer(closedViews, restore.id));
           return false;

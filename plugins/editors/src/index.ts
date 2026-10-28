@@ -167,7 +167,12 @@ export function createEditorsPlugin(
           if (input.threadId !== undefined) {
             const read = await context.commands
               .execute("threads.get", { threadId: input.threadId })
-              .catch(() => undefined);
+              .catch((error: unknown) => {
+                // Only a thread that is not there is THREAD_NOT_FOUND; anything else is the error.
+                const code = (error as { code?: unknown }).code;
+                if (code === "THREAD_NOT_FOUND" || code === "COMMAND_NOT_FOUND") return undefined;
+                throw error;
+              });
             const thread = ThreadOf.safeParse(read);
             if (!thread.success || thread.data.thread.projectId !== project.id) {
               throw new EditorError(

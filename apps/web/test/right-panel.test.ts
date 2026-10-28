@@ -300,4 +300,25 @@ describe("jhin.right-panel", () => {
     expect(await reopen()).toEqual({ reopened: false });
     await kernel.stop();
   });
+
+  it("puts a closed view whose reopen failed last, so the next one reopens (D1641)", async () => {
+    globalThis.localStorage?.clear();
+    const { kernel, navigation } = await start({ ...thread, panel: "diff" }, [
+      kind("diff"),
+      kind("browser", {
+        reopen: () => {
+          throw new Error("the node refused the tab");
+        },
+      }),
+    ]);
+    navigation.navigate({ ...thread, panel: "browser", section: "tab-1" });
+    await kernel.commands.execute("right-panel.surface.close", { id: "diff" });
+    await kernel.commands.execute("right-panel.surface.close", { id: "browser:tab-1" });
+    const reopen = () => kernel.commands.execute("right-panel.reopen-closed", {});
+    // The failure is said (a toast, without one here) and the browser tab waits last.
+    expect(await reopen()).toEqual({ reopened: false });
+    expect(await reopen()).toEqual({ reopened: true });
+    expect(navigation.current()).toEqual({ ...thread, panel: "diff" });
+    await kernel.stop();
+  });
 });

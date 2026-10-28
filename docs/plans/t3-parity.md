@@ -2665,7 +2665,9 @@ steer a Claude Code turn ended before it took go with them.
 - The right panel (D1421–D1424): its open and close animation, a browser
   tab's audio and mute, a device tab's renaming (and so a reopened device
   tab's name, D1641), forgetting a deleted thread's tabs (the 200 places
-  changed last are kept), and "Reopen Closed Tab" from a focused browser
+  changed last are kept), closed views kept per window (D1641 writes its
+  list whole and reads it when the page starts, so two windows each keep
+  their own until reloaded), and "Reopen Closed Tab" from a focused browser
   page in the desktop app (T3 forwards the chord from its webview; D1641
   hears it only while focus is in the page's chrome).
 - T3's Usage page beyond its "Limits" view (D1308): the token and cost
