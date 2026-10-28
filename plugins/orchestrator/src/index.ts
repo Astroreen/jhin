@@ -557,28 +557,39 @@ export default definePlugin({
      * read, is not idle.
      */
     const idleOf = async (working: readonly string[], invocation: Invocation) => {
-      const idle: string[] = [];
-      for (const sliceId of working) {
-        const assignee = state.slices[sliceId]?.assignee;
-        const agent = assignee === undefined ? undefined : parseAgentAddress(assignee);
-        if (agent === undefined) continue;
-        try {
-          const { status } =
-            agent.nodeId === nodeId
-              ? await run<{ status: string }>("agents.get", { agentId: agent.agentId }, invocation)
-              : await onNode<{ status: string }>(
-                  agent.nodeId,
-                  "agents.get",
-                  { agentId: agent.agentId },
-                  ["agents.read"],
-                  invocation,
-                );
-          if (status === "idle") idle.push(sliceId);
-        } catch {
-          // Not known: the mission's other signals still hold.
-        }
-      }
-      return idle;
+      const statuses = await Promise.all(
+        working.map(async (sliceId) => {
+          const assignee = state.slices[sliceId]?.assignee;
+          const agent = assignee === undefined ? undefined : parseAgentAddress(assignee);
+          if (agent === undefined) return undefined;
+          try {
+            const { status } =
+              agent.nodeId === nodeId
+                ? await run<{ status: string }>(
+                    "agents.get",
+                    { agentId: agent.agentId },
+                    invocation,
+                  )
+                : await onNode<{ status: string }>(
+                    agent.nodeId,
+                    "agents.get",
+                    { agentId: agent.agentId },
+                    ["agents.read"],
+                    invocation,
+                  );
+            return status;
+          } catch (error) {
+            // Not known: the mission's other signals still hold, and the log says why.
+            context.log.warn("An assignee's status could not be read", {
+              sliceId,
+              assignee,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
+          }
+        }),
+      );
+      return working.filter((_, index) => statuses[index] === "idle");
     };
 
     // --- Where a mission is (D702) ---------------------------------------------
