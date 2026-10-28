@@ -1182,8 +1182,9 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
 ## Deferred
 
 - Of T3's desktop runtime, beside its webview per tab (`desktop.md` D1321–D1324),
-  its DevTools (D1489), its annotation's Select tool (D1491) and its separate
-  window (D1493): the annotation's other tools (`desktop.md`'s Deferred) and
+  its DevTools (D1489), its annotation's Select, Region, Draw and Erase tools
+  (D1491, `desktop.md` D1690) and its separate window (D1493): the
+  annotation's style panel and source lookup (`desktop.md`'s Deferred) and
   "Open in {environment}'s browser".
 - Of the cookie import (D1204, D1205): opening the node's System Settings
   at Full Disk Access and watching for the grant (T3's `SafariPermission`

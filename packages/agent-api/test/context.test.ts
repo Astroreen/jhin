@@ -6,6 +6,7 @@ import {
   historyTranscript,
   projectMessageContext,
   MESSAGE_CONTEXT_PROJECTED_MAX_CHARS,
+  MessageContextRecordSchema,
   referencedContext,
   ThreadEvents,
   toKindScopedContextId,
@@ -120,5 +121,30 @@ describe("message context records (D1006)", () => {
         "</jhin_context>",
       ].join("\n"),
     );
+  });
+
+  it("gives the agent T3's summary of an annotation's targets (desktop.md D1691)", () => {
+    const record = {
+      version: 1 as const,
+      kind: "preview-annotation" as const,
+      contextId: "preview-annotation_a1",
+      label: "Move this",
+      pageUrl: "http://localhost:3000/",
+      pageTitle: "Shop",
+      comment: "Move this",
+      elements: [],
+      regions: 2,
+      drawings: 1,
+    };
+    const projected = projectMessageContext({
+      text: `see ${formatContextReference(record)}`,
+      records: [record],
+    });
+    expect(projected).toContain("Targets: 2 marked regions, 1 drawing\n");
+    expect(MessageContextRecordSchema.safeParse(record).success).toBe(true);
+    // An annotation needs a target.
+    expect(
+      MessageContextRecordSchema.safeParse({ ...record, regions: 0, drawings: undefined }).success,
+    ).toBe(false);
   });
 });

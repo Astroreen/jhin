@@ -131,15 +131,56 @@ export const PreviewPickedElement = z.object({
 });
 export type PreviewPickedElement = z.output<typeof PreviewPickedElement>;
 
-/** T3's `PreviewAnnotationPayload`, its Select tool's part (D1491). */
-export const PreviewAnnotation = z.object({
-  id: z.string().min(1).max(100),
-  pageUrl: z.string().max(4096),
-  pageTitle: z.string().max(1000),
-  comment: z.string().max(20_000),
-  elements: z.array(PreviewPickedElement).min(1).max(20),
-  createdAt: z.string().max(40),
+const PreviewAnnotationRect = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
 });
+
+/** A rectangle marked with the Region tool (T3's `PreviewAnnotationRegionTarget`, D1690). */
+export const PreviewAnnotationRegion = z.object({
+  id: z.string().min(1).max(100),
+  rect: PreviewAnnotationRect,
+});
+export type PreviewAnnotationRegion = z.output<typeof PreviewAnnotationRegion>;
+
+/** A freehand stroke of the Draw tool (T3's `PreviewAnnotationStrokeTarget`, D1690). */
+export const PreviewAnnotationStroke = z.object({
+  id: z.string().min(1).max(100),
+  color: z.string().max(100),
+  width: z.number().positive().max(100),
+  points: z
+    .array(z.object({ x: z.number(), y: z.number() }))
+    .min(2)
+    .max(2000),
+  bounds: PreviewAnnotationRect,
+});
+export type PreviewAnnotationStroke = z.output<typeof PreviewAnnotationStroke>;
+
+/**
+ * T3's `PreviewAnnotationPayload` (D1491): picked elements and, since `desktop.shell@1.4`,
+ * marked regions and strokes (D1691); at least one target.
+ */
+export const PreviewAnnotation = z
+  .object({
+    id: z.string().min(1).max(100),
+    pageUrl: z.string().max(4096),
+    pageTitle: z.string().max(1000),
+    comment: z.string().max(20_000),
+    elements: z.array(PreviewPickedElement).max(20),
+    regions: z.array(PreviewAnnotationRegion).max(20).optional(),
+    strokes: z.array(PreviewAnnotationStroke).max(50).optional(),
+    createdAt: z.string().max(40),
+  })
+  .refine(
+    (annotation) =>
+      annotation.elements.length +
+        (annotation.regions?.length ?? 0) +
+        (annotation.strokes?.length ?? 0) >
+      0,
+    { message: "An annotation needs an element, a region or a drawing" },
+  );
 export type PreviewAnnotation = z.output<typeof PreviewAnnotation>;
 
 /** What annotating a page gives: null when cancelled (T3's `pickElement`). */
@@ -242,7 +283,7 @@ export interface DesktopShell {
     popOut?(webContentsId: number, title: string): Promise<void>;
     closePopOut?(webContentsId: number): Promise<void>;
     onPopOutClosed?(listener: (webContentsId: number) => void): Disposable;
-    /** Since 1.3: annotating elements of a webview's page (D1491). */
+    /** Since 1.3: annotating elements of a webview's page (D1491); 1.4 adds regions and drawings (D1691). */
     pickElement?(webContentsId: number): Promise<PreviewPickResult>;
     cancelPickElement?(webContentsId: number): Promise<void>;
   };

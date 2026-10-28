@@ -810,6 +810,11 @@ export const previewPanelPlugin = builtin(
             tagName,
             text,
           })),
+          // The marked regions and drawings, counted: the screenshot shows them (D1691).
+          ...((annotation.regions?.length ?? 0) > 0 ? { regions: annotation.regions!.length } : {}),
+          ...((annotation.strokes?.length ?? 0) > 0
+            ? { drawings: annotation.strokes!.length }
+            : {}),
         };
         try {
           const inserted = (await context.commands.execute("chat.composer.insert-context", {
