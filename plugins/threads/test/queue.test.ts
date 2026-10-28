@@ -640,13 +640,10 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(starts(events)[1]!.turnId).toBe(sent.turnId);
     expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
     expect(count(events, ThreadEvents.turnSteered)).toBe(0);
-    // A new attempt of the stopped turn's run, which is superseded (D1653); what was queued
+    // A new attempt of the stopped turn's run, which it supersedes (D1653); what was queued
     // after it is a turn of its own.
     expect(starts(events)[1]).toMatchObject({ restartOf: starts(events)[0]!.turnId });
     expect(starts(events)[2]).not.toHaveProperty("restartOf");
-    expect(
-      events.find((event) => event.type === ThreadEvents.turnInterrupted)?.payload,
-    ).toMatchObject({ turnId: starts(events)[0]!.turnId, superseded: true });
     await untilCount(watched, ThreadEvents.turnCompleted, 2);
     expect(lastQueue(events)).toMatchObject({ messages: [] });
     expect(lastQueue(events)?.held).toBeUndefined();

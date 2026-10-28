@@ -2000,8 +2000,6 @@ export default definePlugin({
             ...(ending.error === undefined ? {} : { error: ending.error }),
             ...(ending.reason === undefined ? {} : { reason: ending.reason }),
             ...(ending.failure === undefined ? {} : { failure: { ...ending.failure } }),
-            // A restart's stopped turn is a superseded attempt of its run (D1653).
-            ...(restarted ? { superseded: true } : {}),
           };
           if (ending.status === "completed" || restarted || deleted.has(thread.id)) {
             await recordEnd(ending.type, payload);

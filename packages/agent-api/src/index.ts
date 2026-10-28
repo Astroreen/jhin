@@ -661,7 +661,7 @@ export const ThreadEvents = {
    * fork's result before `input.text`. In a fork, events copied from its parent
    * carry `inheritedAt`, their original time. `restartOf` (`t3-parity.md`
    * D1653) names the turn a restart stopped: this turn is a new attempt of
-   * that turn's run, and that turn's `agent.turn.interrupted` has `superseded`.
+   * that turn's run, which it supersedes.
    */
   turnStarted: "agent.turn.started",
   /** `{ turnId, messageId, input }`: a message the running turn took (a steer, D205). */
@@ -689,7 +689,6 @@ export const ThreadEvents = {
   /** `{ turnId, goal }`: the thread's goal, `null` once cleared (since 1.10, providers.md D1149). */
   goalUpdated: "agent.goal.updated",
   turnCompleted: "agent.turn.completed",
-  /** `{ turnId, reason?, superseded? }`: `superseded` when a restart stopped it (D1653). */
   turnInterrupted: "agent.turn.interrupted",
   /** `{ turnId, error?, failure? }`; `failure` (since 1.8, `AgentTurnFailure`) says why. */
   turnFailed: "agent.turn.failed",

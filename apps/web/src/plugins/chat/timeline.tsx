@@ -954,24 +954,27 @@ function TurnView(props: {
           </div>
         </div>
       ) : superseded ? (
-        <div className="pb-1.5">
-          {/* T3's AttemptFoldTimelineRow. */}
-          <button
-            aria-expanded={unfolded}
-            className="flex w-full cursor-pointer select-none items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-            data-superseded-attempt={turn.turnId}
-            onClick={() => setUnfolded(!unfolded)}
-            type="button"
-          >
-            {unfolded ? (
-              <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="text-xs font-medium text-foreground/80">Superseded attempt</span>
-            <span className="text-2xs text-muted-foreground">Cut off by a steer</span>
-          </button>
-        </div>
+        // Nothing of the attempt to fold: no row that opens onto nothing.
+        !blocks.some(foldable) ? null : (
+          <div className="pb-1.5">
+            {/* T3's AttemptFoldTimelineRow. */}
+            <button
+              aria-expanded={unfolded}
+              className="flex w-full cursor-pointer select-none items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+              data-superseded-attempt={turn.turnId}
+              onClick={() => setUnfolded(!unfolded)}
+              type="button"
+            >
+              {unfolded ? (
+                <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="text-xs font-medium text-foreground/80">Superseded attempt</span>
+              <span className="text-2xs text-muted-foreground">Cut off by a steer</span>
+            </button>
+          </div>
+        )
       ) : folds || turn.state === "interrupted" ? (
         <div className="pb-1.5">
           <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pt-1 pe-0.5 pb-2">

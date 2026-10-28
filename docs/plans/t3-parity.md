@@ -2638,10 +2638,10 @@ steer a Claude Code turn ended before it took go with them.
 - **D1653. T3's restart as a new attempt of the same run** (D803; T3's
   `run-attempt` with `reason: "steering_restart"`, the old attempt
   `superseded`). The turn a restart's message starts names the stopped
-  turn (`restartOf` on `agent.turn.started`, additive), and the stopped
-  turn's end says it was superseded (`superseded: true` on
-  `agent.turn.interrupted`, beside the `reason` text it may have); the
-  thread's queue is not held by it, as before.
+  turn (`restartOf` on `agent.turn.started`, additive): that stopped turn
+  is superseded once its successor started, and not before, so a restart
+  whose message never starts (refused, or held by a Stop) leaves an
+  ordinary stop. The stopped turn's queue is not held by it, as before.
 - **D1654. A superseded attempt folds,** T3's
   `deriveSupersededAttemptFolds` and `AttemptFoldTimelineRow`. In the
   timeline the stopped turn's work and answer fold into one collapsed row,

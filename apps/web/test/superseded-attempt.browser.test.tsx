@@ -24,7 +24,7 @@ const events = stream(
   [ThreadEvents.turnStarted, { turnId: "u1", agentId: "acme.plain", input: { text: "Build it" } }],
   [ThreadEvents.itemCompleted, { turnId: "u1", itemId: "a", kind: "message", text: "Plan first." }],
   [ThreadEvents.itemDelta, { turnId: "u1", itemId: "b", kind: "message", text: "Starting the bu" }],
-  [ThreadEvents.turnInterrupted, { turnId: "u1", superseded: true }],
+  [ThreadEvents.turnInterrupted, { turnId: "u1" }],
   [
     ThreadEvents.turnStarted,
     {
@@ -39,12 +39,39 @@ const events = stream(
 );
 
 describe("a superseded attempt", () => {
-  it("is read from the stopped turn's end", () => {
+  it("is a stopped turn whose restart's turn started, and only then", () => {
     const { turns } = reduceTimeline(events);
     expect(turns.map((turn) => [turn.turnId, turn.state, turn.superseded])).toEqual([
       ["u1", "interrupted", true],
       ["u2", "completed", undefined],
     ]);
+    // A restart whose message never started leaves an ordinary stop.
+    expect(reduceTimeline(events.slice(0, 4)).turns[0]?.superseded).toBeUndefined();
+  });
+
+  it("shows no fold when nothing of the attempt can fold", async () => {
+    const empty = stream(
+      [ThreadEvents.turnStarted, { turnId: "u1", agentId: "a", input: { text: "Build it" } }],
+      [ThreadEvents.turnInterrupted, { turnId: "u1" }],
+      [
+        ThreadEvents.turnStarted,
+        { turnId: "u2", agentId: "a", input: { text: "Use Rust" }, restartOf: "u1" },
+      ],
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<TimelineView format="locale" timeline={reduceTimeline(empty)} />);
+      });
+      await expect.element(page.getByText("Use Rust")).toBeVisible();
+      expect(page.getByRole("button", { name: /Superseded attempt/ }).query()).toBeNull();
+      expect(page.getByText("You stopped this response").query()).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 
   it("folds the cut-off output under T3's row, keeping the messages and a finished answer", async () => {
