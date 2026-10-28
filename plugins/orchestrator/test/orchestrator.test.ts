@@ -688,6 +688,8 @@ describe("the reviewer's brief (D1244–D1246)", () => {
     const text = payloadOf(turn).input.text as string;
     expect(text).toContain("[Slice handed to you]");
     expect(text).toContain("[Review handed to you]");
+    // The reviews are not the slice's proof: the reviewer is told to prove it (D1576).
+    expect(text).toContain(`prove this slice with slices_prove { sliceId: "${review.id}"`);
     expect(text).toContain("Ids are public API");
     expect(text).toContain("+export const walls = 4;");
   });
@@ -843,6 +845,34 @@ describe("missions.orchestrate (D706, D707)", () => {
         { caller: AGENT, threadId: "t" },
       ),
     ).rejects.toMatchObject({ code: "MISSION_CLOSED" });
+  });
+});
+
+describe("a wave nobody works on (D1575)", () => {
+  it("wakes the lead once a wait ends with nothing moved and the slice's agent idle", async () => {
+    const { client, mission, slice } = await node();
+    const lead = await client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    const walls = await slice({ title: "Walls", assignee: BUILDER });
+    const roof = await slice({ title: "Roof", assignee: OWNER });
+    const workflows = watch(client, "orchestration");
+    // The fake builder answers its handoff and ends its turn without a proof.
+    const run = await client.call<{ workflowId: string }>("missions.orchestrate", {
+      missionId: mission.id,
+      parentThreadId: lead.id,
+      waitMs: 1,
+    });
+    expect(await workflowEnds(workflows, run.workflowId)).toMatchObject({
+      status: "completed",
+      result: { outcome: "decide", decisions: [{ sliceId: walls.id, reason: "idle" }] },
+    });
+    // The owner's slice is never idle: nothing reads an owner's turns.
+    expect(await client.call("missions.next", { missionId: mission.id })).toMatchObject({
+      working: [walls.id, roof.id],
+      idle: [walls.id],
+    });
   });
 });
 

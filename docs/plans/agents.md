@@ -2591,6 +2591,21 @@ Decisions (M3):
   away (D1548), and what the owner can do, instead of "Waiting for the
   analyst…", which waited for nobody. Found by D1563's scenario, whose
   screenshots showed the server's node id.
+- **D1575. A wave nobody works on wakes the lead.** `missions.next` says
+  which working slices have an idle agent (`idle`, additive): its status on
+  its node (`agents.get`, through `mesh.call` for another node) is `idle`,
+  so its turn ended and nothing of it runs or waits; an owner's slice, or a
+  status that cannot be read, is not idle. When a wait of the orchestrator
+  ends with nothing moved (its timeout, 10 minutes by default) and a slice of
+  the wave has an idle agent, the run ends with `decide` and the decisions
+  `{ sliceId, reason: "idle" }`, and a note that tells the lead to ask what
+  is left. Before, a run waited on and on: in the M3 run the reviewer
+  recorded both verdicts but not its review slice's proof, every agent was
+  idle, and for 14 minutes nobody had a next step until the owner asked.
+- **D1576. A reviewer is told to prove its review slice.** The handoff of a
+  review slice says that the reviews it records are not the slice's proof,
+  and to prove it with `slices_prove` once they are recorded. Before, it
+  named only `slices_review`, and in the M3 run the reviewer stopped there.
 
 ## Deferred
 

@@ -23,6 +23,8 @@ const STEPS_NOTE = "Take each step with missions_update { missionId, step } befo
 const handed = [];
 // The wave this run saw at work: once it is over, the mission's steps between waves are the lead's.
 let watched = null;
+// Whether the last wait ended with nothing moved: then an idle agent's slice is the lead's (D1575).
+let quiet = false;
 for (;;) {
   const next = await command("missions.next", { missionId, ...on });
   const end = (outcome, more) => ({ outcome, missionId, ...on, title: next.mission.title, handed, ...more });
@@ -44,6 +46,13 @@ for (;;) {
       projectSteps: next.projectSteps,
       review: await command("missions.review.check", { missionId, ...on }),
       note: "Every slice is done or dropped. Run the mission's steps, then close it with missions.close once its outcome holds, saying what was committed or merged and where: the owner gets your report. " + STEPS_NOTE,
+    });
+  }
+  if (quiet && (next.idle ?? []).length > 0) {
+    return end("decide", {
+      wave: next.wave,
+      decisions: next.idle.map((sliceId) => ({ sliceId, reason: "idle" })),
+      note: "Nothing moved while the orchestrator waited, and the agents of these slices are idle: their turns ended without a proof or a block. Ask each what is left (it may have finished without recording its proof, or be stuck), then run the orchestrator again.",
     });
   }
   if (watched !== null && next.wave !== watched && next.steps.length > 0) {
@@ -72,6 +81,7 @@ for (;;) {
   }
   const decisions = [...next.decisions, ...failed];
   if (decisions.length > 0) return end("decide", { wave: next.wave, decisions });
-  await command("missions.wait", { missionId, after: next.head, away: next.decisions.filter((item) => item.reason === "away").map((item) => item.sliceId), ...on, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
+  const waited = await command("missions.wait", { missionId, after: next.head, away: next.decisions.filter((item) => item.reason === "away").map((item) => item.sliceId), ...on, ...(waitMs === undefined ? {} : { timeoutMs: waitMs }) });
+  quiet = !waited.changed;
 }
 `;

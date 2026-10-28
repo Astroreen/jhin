@@ -178,6 +178,12 @@ const Next = MissionProgress.extend({
    * wait anyway, and the rest goes on (D1263).
    */
   held: z.boolean(),
+  /**
+   * Working slices whose agent is idle now: its turn ended and nothing of it
+   * runs or waits, so the slice moves only when someone asks (D1575). An agent
+   * whose status cannot be read is left out.
+   */
+  idle: z.array(z.string()),
 });
 
 const ThreadView = z
@@ -545,6 +551,36 @@ export default definePlugin({
       return missionProgress(slices, { away: awayOf(slices) });
     };
 
+    /**
+     * The working slices whose agent is idle (D1575), read with `agents.get` as
+     * the node on the agent's node: an owner's slice, or a status that cannot be
+     * read, is not idle.
+     */
+    const idleOf = async (working: readonly string[], invocation: Invocation) => {
+      const idle: string[] = [];
+      for (const sliceId of working) {
+        const assignee = state.slices[sliceId]?.assignee;
+        const agent = assignee === undefined ? undefined : parseAgentAddress(assignee);
+        if (agent === undefined) continue;
+        try {
+          const { status } =
+            agent.nodeId === nodeId
+              ? await run<{ status: string }>("agents.get", { agentId: agent.agentId }, invocation)
+              : await onNode<{ status: string }>(
+                  agent.nodeId,
+                  "agents.get",
+                  { agentId: agent.agentId },
+                  ["agents.read"],
+                  invocation,
+                );
+          if (status === "idle") idle.push(sliceId);
+        } catch {
+          // Not known: the mission's other signals still hold.
+        }
+      }
+      return idle;
+    };
+
     // --- Where a mission is (D702) ---------------------------------------------
     register({
       name: "missions.next",
@@ -553,7 +589,7 @@ export default definePlugin({
       input: z.object({ missionId: z.string() }),
       output: Next,
       permissions: ["missions.read"],
-      handler: async ({ missionId }) => {
+      handler: async ({ missionId }, invocation) => {
         await sync();
         const mission = getMission(missionId);
         const progress = progressOf(mission);
@@ -569,6 +605,7 @@ export default definePlugin({
           projectSteps: state.intents[mission.projectId]?.process ?? [],
           ...(await holdOf(mission)),
           ...progress,
+          idle: await idleOf(progress.working, invocation),
         };
       },
     });
