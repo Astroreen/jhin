@@ -2655,6 +2655,18 @@ Decisions (M3):
   stays; listed reachable, it came back while this node was down, so the
   since is dropped and a later absence counts from then; not listed yet, it
   waits. A warning is raised only once its since is written.
+- **D1572. `teams.down` can remove a team's agents.** It takes an optional
+  `remove`, off when unset, and then it is as before (D689). With it, each
+  member is stopped and its definition removed on its node, as `teams.leave`
+  does (D1546): locally, or through `mesh.call` for another node, with
+  `teams.leave { removing }`, which skips the guard of a member still there
+  and drops that node's roster. The seat guard stays, so a node removes only
+  agents it put there for that team. Generations and knowledge stay. Each
+  member's entry says `removed`, or `error` when it failed, such as one on
+  an away node, and the call goes on with the others. The roster is dropped,
+  so a later `teams.up` defines the team afresh; the `jhin.teams` spec in
+  config stays. It is recorded as `teams.team.down` with `removed: true`.
+  The owner chose this over a new `teams.remove` command and over no change.
 
 ## Deferred
 
@@ -2772,8 +2784,12 @@ Decisions (M3):
 - A4: events when pages change (pages are re-read when their mtime changes).
 - A5: fencing escalation: refusing a member's ask to the owner, so only
   the lead reaches the inbox. D688 tells members, it does not enforce it.
-- A5: removing a team's agents. `teams.down` stops them (D689); removing
-  each member is `agents.remove` on its node.
+- ~~A5: removing a team's agents. `teams.down` stops them (D689); removing
+  each member is `agents.remove` on its node.~~ M3, D1572.
+- M3: a member whose removal failed (its node away) keeps its definition
+  there after `teams.down { remove }` dropped the roster (D1572); a later
+  `teams.up` updates it, or `teams.down { remove }` again once its node is
+  back removes it.
 - ~~A5: a member moved to another node: `teams.up` puts it on the new node and
   rewrites the rosters, but its agent on the old node stays defined (stop it
   with `teams.down` before the move).~~ M2, D1546.

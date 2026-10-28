@@ -427,7 +427,7 @@ export default definePlugin({
       });
 
     // --- Leaving: a member that moved to another node (D1546) ------------------------
-    const leave = (input: { roster: TeamRoster; member: string }) =>
+    const leave = (input: { roster: TeamRoster; member: string; removing?: boolean | undefined }) =>
       serial(async () => {
         const { roster, member } = input;
         const agentId = teamAgentId(roster.teamId, member);
@@ -435,7 +435,7 @@ export default definePlugin({
         // An agent the team did not put here, or the member still here, stays.
         if (
           seat?.teamId !== roster.teamId ||
-          roster.members[member] === agentAddress(nodeId, agentId)
+          (input.removing !== true && roster.members[member] === agentAddress(nodeId, agentId))
         ) {
           return { left: false };
         }
@@ -448,7 +448,8 @@ export default definePlugin({
         // Its generations and knowledge stay (D611); its definition goes.
         if (stopped !== undefined) await run("agents.remove", { agentId });
         await kv.delete(NAMESPACE, `seat/${agentId}`);
-        await kv.set(NAMESPACE, `roster/${roster.teamId}`, roster as unknown as Json);
+        if (input.removing === true) await kv.delete(NAMESPACE, `roster/${roster.teamId}`);
+        else await kv.set(NAMESPACE, `roster/${roster.teamId}`, roster as unknown as Json);
         return { left: true, ...(stopped === undefined ? {} : { stoppedAt: stopped.stoppedAt }) };
       });
 
@@ -632,15 +633,36 @@ export default definePlugin({
     context.commands.register({
       name: "teams.down",
       description:
-        "Stops a team: stops each member's agent on its node (agents.stop); its definitions and roster stay, and teams.up resumes it",
+        "Stops a team: stops each member's agent on its node (agents.stop); its definitions and roster stay, and teams.up resumes it. With remove, each definition is removed on its node too (generations and knowledge stay) and the roster is dropped",
       ...TeamCommands["teams.down"],
       permissions: WRITE_PERMISSIONS,
-      handler: async ({ teamId }, invocation) => {
+      handler: async ({ teamId, remove }, invocation) => {
         const roster = (await rosterOf(teamId)) ?? rosterFor(teamId, specOrThrow(teamId));
         const members = [];
         for (const [member, address] of Object.entries(roster.members)) {
           const { nodeId: node, agentId } = parseAgentAddress(address)!;
           try {
+            if (remove === true) {
+              // As `teams.leave` takes a member off a node (D1546): stop, then remove.
+              const input = { roster, member, removing: true };
+              const left =
+                node === nodeId
+                  ? await leave(input)
+                  : await remote<{ left: boolean; stoppedAt?: string }>(
+                      node,
+                      "teams.leave",
+                      input,
+                      invocation,
+                      WRITE_PERMISSIONS,
+                    );
+              members.push({
+                member,
+                address,
+                removed: left.left,
+                ...(left.stoppedAt === undefined ? {} : { stoppedAt: left.stoppedAt }),
+              });
+              continue;
+            }
             const stopped =
               node === nodeId
                 ? await run<{ stoppedAt: string; interrupted: boolean }>("agents.stop", {
@@ -661,7 +683,12 @@ export default definePlugin({
         const at = now();
         const state = await stateOf(teamId);
         await kv.set(NAMESPACE, `team/${teamId}`, { ...state, downAt: at } as Json);
-        await append(TeamEvents.down, { teamId, at });
+        if (remove === true) await kv.delete(NAMESPACE, `roster/${teamId}`);
+        await append(TeamEvents.down, {
+          teamId,
+          at,
+          ...(remove === true ? { removed: true } : {}),
+        });
         return { members };
       },
     });

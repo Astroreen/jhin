@@ -26,7 +26,7 @@ export const TeamEvents = {
   changed: "teams.team.changed",
   /** `TeamRoster`: `teams.up` put the team's agents on their nodes. */
   up: "teams.team.up",
-  /** `{ teamId, at }`: `teams.down` stopped the team's agents. */
+  /** `{ teamId, at, removed? }`: `teams.down` stopped the team's agents, and removed them when `removed`. */
   down: "teams.team.down",
 } as const;
 
@@ -265,7 +265,12 @@ export const TeamCommands = {
     }),
   },
   "teams.down": {
-    input: TeamRef,
+    input: TeamRef.extend({
+      remove: z.boolean().optional().meta({
+        description:
+          "Also remove each member's definition on its node and drop the roster, so a later teams.up defines the team afresh; generations and knowledge stay. A member that fails says so and the others go on. Off when unset",
+      }),
+    }),
     output: z.object({
       members: z.array(
         z.object({
@@ -273,6 +278,8 @@ export const TeamCommands = {
           address: z.string(),
           stoppedAt: z.string().optional(),
           interrupted: z.boolean().optional(),
+          /** With `remove`: whether its definition was removed (false: it is not one the team put there). */
+          removed: z.boolean().optional(),
           error: MemberError.optional(),
         }),
       ),
@@ -293,6 +300,8 @@ export const TeamCommands = {
       /** The roster as it is now, the member on its new node. */
       roster: TeamRoster,
       member: MemberId,
+      /** `teams.down` with `remove`: the member is not moving, its roster is dropped. */
+      removing: z.boolean().optional(),
     }),
     output: z.object({
       /** False when this node holds no agent the team put here for the member. */
