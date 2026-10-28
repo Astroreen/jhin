@@ -521,6 +521,9 @@ context.config.define("acme.http", Config);
   has no last height until the page is opened again. A jump can therefore land a
   little off its section when sections above it render with another height;
   the browser's scroll anchoring keeps most of it in place.
+- The browser's find reaches a waiting section (D1625) only where
+  `hidden="until-found"` is supported (Chromium; not Safari); elsewhere its
+  words stay hidden until the section renders near the viewport.
 - A fan-out through a connected node older than D475: the page sends
   `mesh.config.patch` to its own node, which delivers the change as that
   node's version does (without `edits`, and with `unset` dropped by nodes
