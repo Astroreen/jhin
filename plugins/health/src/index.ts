@@ -611,11 +611,22 @@ export default definePlugin({
       for (const [missionId, mission] of Object.entries(sensors.missions.missions)) {
         // A mission that is over has no run to warn of.
         if (mission.status === "done" || mission.status === "dropped") continue;
-        const answer = (await context.commands
-          .execute("missions.orchestration", { missionId, offline: true })
-          .catch(() => undefined)) as
-          | { recorded?: { nodeId?: string; status?: string } }
-          | undefined;
+        let answer: { recorded?: { nodeId?: string; status?: string } } | undefined;
+        try {
+          answer = (await context.commands.execute("missions.orchestration", {
+            missionId,
+            offline: true,
+          })) as typeof answer;
+        } catch (error) {
+          // A read that failed is not a run that ended: what was known stays.
+          const known = sensors.runOf(missionId);
+          if (known !== undefined) runs.set(missionId, known);
+          context.log.warn("health could not read a mission's run", {
+            missionId,
+            error: String(error),
+          });
+          continue;
+        }
         if (answer?.recorded?.nodeId !== undefined) {
           runs.set(missionId, { nodeId: answer.recorded.nodeId, status: answer.recorded.status });
         }

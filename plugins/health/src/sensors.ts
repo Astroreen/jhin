@@ -254,6 +254,11 @@ export class Sensors {
     );
   }
 
+  /** The run last read of a mission, if any (D1571). */
+  runOf(missionId: string): { nodeId: string; status: string | undefined } | undefined {
+    return this.runs.get(missionId);
+  }
+
   setRuns(runs: ReadonlyMap<string, { nodeId: string; status: string | undefined }>): void {
     this.runs = new Map(runs);
   }

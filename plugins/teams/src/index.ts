@@ -683,11 +683,15 @@ export default definePlugin({
         const at = now();
         const state = await stateOf(teamId);
         await kv.set(NAMESPACE, `team/${teamId}`, { ...state, downAt: at } as Json);
-        if (remove === true) await kv.delete(NAMESPACE, `roster/${teamId}`);
+        // The roster goes only once every member is off its node: one that failed
+        // (its node away) is still in it for the next teams.down to remove.
+        const removedAll =
+          remove === true && members.every((item) => "removed" in item && item.removed);
+        if (removedAll) await kv.delete(NAMESPACE, `roster/${teamId}`);
         await append(TeamEvents.down, {
           teamId,
           at,
-          ...(remove === true ? { removed: true } : {}),
+          ...(removedAll ? { removed: true } : {}),
         });
         return { members };
       },

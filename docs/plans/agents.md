@@ -2656,6 +2656,8 @@ Decisions (M3):
   away again, as D1548's. It clears by itself (D1383) when the run ended
   (`run-ended`) or its node is back or it is recorded again on a node that
   is up (`node-back`, `members-unknown` while the members are not known).
+  A read that fails keeps the run as it was last read, so a warning does not
+  clear and rise again on one failed call.
 - **D1572. `teams.down` can remove a team's agents.** It takes an optional
   `remove`, off when unset, and then it is as before (D689). With it, each
   member is stopped and its definition removed on its node, as `teams.leave`
@@ -2664,9 +2666,11 @@ Decisions (M3):
   and drops that node's roster. The seat guard stays, so a node removes only
   agents it put there for that team. Generations and knowledge stay. Each
   member's entry says `removed`, or `error` when it failed, such as one on
-  an away node, and the call goes on with the others. The roster is dropped,
-  so a later `teams.up` defines the team afresh; the `jhin.teams` spec in
-  config stays. It is recorded as `teams.team.down` with `removed: true`.
+  an away node, and the call goes on with the others. Once every member is
+  removed the roster is dropped, so a later `teams.up` defines the team
+  afresh, and it is recorded as `teams.team.down` with `removed: true`; while
+  a member failed, the roster and its address stay for the next call. The
+  `jhin.teams` spec in config stays.
   The owner chose this over a new `teams.remove` command and over no change.
 - **D1575. A wave nobody works on wakes the lead.** `missions.next` says
   which working slices have an idle agent (`idle`, additive): its status on
