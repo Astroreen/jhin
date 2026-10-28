@@ -1,7 +1,9 @@
 // The writer turn itself is @jhin/agent-api's askAgent (t3-parity.md D1174).
 // The prompts follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/provider-core/src/server/textGenerationPrompts.ts (buildCommitMessagePrompt,
-// buildPrContentPrompt, buildBranchNamePrompt).
+// buildPrContentPrompt, buildBranchNamePrompt, policyInstruction), and the writing style
+// follows apps/server/src/textGeneration/TextGenerationPresets.ts and GitManager.ts's
+// resolveStylePolicy, readRecentCommitSubjects and readRepositoryInstructions (D1666).
 import { randomUUID } from "node:crypto";
 import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
@@ -10,6 +12,90 @@ import * as Path from "node:path";
 import { askAgent, parseJsonObject, type AgentRuntime, type Deadline } from "@jhin/agent-api";
 
 export { parseJsonObject };
+
+/** T3's writing style modes (`SourceControlWritingStyleMode`, D1666). */
+export type WritingStyleMode = "repo_conventions" | "conventional_commits" | "custom";
+
+/** What the writer's prompts add under "Additional instructions:" (T3's `TextGenerationPolicy`). */
+export interface WritingPolicy {
+  readonly commit?: string;
+  readonly pullRequest?: string;
+}
+
+const CONVENTIONAL_COMMITS: WritingPolicy = {
+  commit:
+    "Use Conventional Commits when generating commit subjects. Prefer the narrowest accurate type and include a scope only when it is obvious from the diff.",
+  pullRequest:
+    "Keep the change request title concise. Do not force Conventional Commit syntax into the title unless the repository already uses it.",
+};
+const REPOSITORY_CONVENTIONS: Required<WritingPolicy> = {
+  commit: "Follow the repository's established commit message style when examples are available.",
+  pullRequest:
+    "Follow the repository's established change request title and body style when examples are available.",
+};
+
+/** T3's readRepositoryInstructions: a file at the repository's root, at most 20 KB, or "". */
+async function repositoryInstructions(root: string, name: string): Promise<string> {
+  try {
+    const real = await Fs.realpath(root);
+    const file = await Fs.realpath(Path.join(real, name));
+    const relative = Path.relative(real, file);
+    if (relative === "" || relative.startsWith("..") || Path.isAbsolute(relative)) return "";
+    const info = await Fs.stat(file);
+    if (!info.isFile() || info.size > 20_000) return "";
+    return (await Fs.readFile(file, "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * T3's resolveStylePolicy (D1666): Conventional Commits' words, the custom instructions, or the
+ * repository's conventions with its recent commit subjects, its AGENTS.md and, for a Claude
+ * writer, its CLAUDE.md.
+ */
+export async function writingPolicy(input: {
+  readonly mode: WritingStyleMode;
+  readonly instructions: string;
+  readonly root: string;
+  /** The 20 latest non-merge commit subjects (T3's readRecentCommitSubjects). */
+  readonly subjects: () => Promise<readonly string[]>;
+  readonly claude: boolean;
+}): Promise<WritingPolicy> {
+  switch (input.mode) {
+    case "conventional_commits":
+      return CONVENTIONAL_COMMITS;
+    case "custom": {
+      const instructions = input.instructions.trim();
+      return instructions === "" ? {} : { commit: instructions, pullRequest: instructions };
+    }
+    case "repo_conventions": {
+      const [subjects, agents, claude] = await Promise.all([
+        input.subjects().catch(() => []),
+        repositoryInstructions(input.root, "AGENTS.md"),
+        input.claude ? repositoryInstructions(input.root, "CLAUDE.md") : Promise.resolve(""),
+      ]);
+      const examples = [
+        ...(subjects.length > 0
+          ? [["Recent commit subjects from this repository:", ...subjects].join("\n")]
+          : []),
+        ...(agents ? [`Local AGENTS.md:\n${agents}`] : []),
+        ...(claude ? [`Local CLAUDE.md:\n${claude}`] : []),
+      ].join("\n\n");
+      if (!examples) return REPOSITORY_CONVENTIONS;
+      return {
+        commit: `${REPOSITORY_CONVENTIONS.commit}\n\n${examples}`,
+        pullRequest: `${REPOSITORY_CONVENTIONS.pullRequest}\n\n${examples}`,
+      };
+    }
+  }
+}
+
+/** T3's policyInstruction. */
+function policyInstruction(instruction: string | undefined): string[] {
+  const trimmed = instruction?.trim();
+  return trimmed ? ["", "Additional instructions:", section(trimmed, 20_000)] : [];
+}
 
 interface CommitMessageInput {
   readonly branch: string | null;
@@ -70,7 +156,7 @@ interface BranchNameInput {
 const section = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max)}\n[truncated]`;
 
-function commitMessagePrompt(input: CommitMessageInput): string {
+function commitMessagePrompt(input: CommitMessageInput, policy: WritingPolicy): string {
   return [
     "You write concise git commit messages.",
     input.includeBranch
@@ -83,6 +169,7 @@ function commitMessagePrompt(input: CommitMessageInput): string {
       ? ["- branch must be a short semantic git branch fragment for this change"]
       : []),
     "- capture the primary user-visible or developer-visible change",
+    ...policyInstruction(policy.commit),
     "",
     `Branch: ${input.branch ?? "(detached)"}`,
     "",
@@ -94,7 +181,7 @@ function commitMessagePrompt(input: CommitMessageInput): string {
   ].join("\n");
 }
 
-function pullRequestPrompt(input: PullRequestInput): string {
+function pullRequestPrompt(input: PullRequestInput, policy: WritingPolicy): string {
   const template = input.template?.trim();
   return [
     "You write source control change request content.",
@@ -113,6 +200,7 @@ function pullRequestPrompt(input: PullRequestInput): string {
           "- under Summary, provide short bullet points",
           "- under Testing, include bullet points with concrete checks or 'Not run' where appropriate",
         ]),
+    ...policyInstruction(policy.pullRequest),
     ...(template ? ["", "Repository change request template:", section(template, 8_000)] : []),
     "",
     `Base branch: ${input.base}`,
@@ -212,10 +300,16 @@ export function agentWriter(options: {
   /** Starts the time a turn may take; a turn past it falls back to `plainWriter`. */
   deadline?: () => Deadline;
   warn: (message: string, fields: Record<string, unknown>) => void;
+  /** The writing style of the writer's prompts, for the runtime that writes (D1666). */
+  policy?: (runtime: AgentRuntime) => Promise<WritingPolicy>;
 }): Writer {
-  const answer = async (prompt: string): Promise<Record<string, unknown> | undefined> => {
+  const answer = async (
+    build: (policy: WritingPolicy) => string,
+  ): Promise<Record<string, unknown> | undefined> => {
     const runtime = await options.runtime();
     if (runtime === undefined) return undefined;
+    const policy = (await options.policy?.(runtime).catch(() => ({}))) ?? {};
+    const prompt = build(policy);
     try {
       // The prompt carries the repository's own text (its diff, its template): the turn runs
       // in an empty folder of its own, so nothing it is talked into can reach the repository.
@@ -243,7 +337,7 @@ export function agentWriter(options: {
   const text = (value: unknown) => (typeof value === "string" ? value : undefined);
   return {
     async commitMessage(input) {
-      const parsed = await answer(commitMessagePrompt(input));
+      const parsed = await answer((policy) => commitMessagePrompt(input, policy));
       const subject = text(parsed?.["subject"]);
       if (subject === undefined || subject.trim() === "") return plainWriter.commitMessage(input);
       const branch = text(parsed?.["branch"]);
@@ -254,13 +348,13 @@ export function agentWriter(options: {
       };
     },
     async pullRequest(input) {
-      const parsed = await answer(pullRequestPrompt(input));
+      const parsed = await answer((policy) => pullRequestPrompt(input, policy));
       const title = text(parsed?.["title"]);
       if (title === undefined || title.trim() === "") return plainWriter.pullRequest(input);
       return { title, body: text(parsed?.["body"]) ?? "" };
     },
     async branchName(input) {
-      const branch = text((await answer(branchNamePrompt(input)))?.["branch"])?.trim();
+      const branch = text((await answer(() => branchNamePrompt(input)))?.["branch"])?.trim();
       return branch === undefined || branch === "" ? undefined : branch;
     },
   };

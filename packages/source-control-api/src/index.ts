@@ -214,6 +214,18 @@ export const PullRequestDetail = z.object({
 });
 export type PullRequestDetail = z.output<typeof PullRequestDetail>;
 
+/** What `git.publish` did (T3's `SourceControlPublishRepositoryResult`, D1667). */
+export const PublishedRepository = z.object({
+  repository: z.object({ nameWithOwner: z.string(), url: z.string() }),
+  remoteName: z.string(),
+  remoteUrl: z.string(),
+  branch: z.string(),
+  upstreamBranch: z.string().optional(),
+  /** `pushed`, or `remote_added` for a repository without commits. */
+  status: z.enum(["pushed", "remote_added"]),
+});
+export type PublishedRepository = z.output<typeof PublishedRepository>;
+
 /** A pull request checked out for a thread (`git.pr.checkout`, D902). */
 export const PreparedPullRequest = z.object({
   pullRequest: PullRequest,

@@ -35,6 +35,7 @@ sweep (`plugins/source-control/src/cleanup.ts`) with its Storage settings
 dialog, the forges' icons, names and reference forms (`apps/web/src/lib/forges.ts`), a thread's pull requests panel and its thread
 details rows (`plugins/source-control/pull-requests-panel.tsx`,
 `pull-request-rows.tsx`, `pull-request-presentation.tsx`, `pull-request-menu.tsx`,
+`publish-repository.tsx`, `plugins/source-control/src/publish.ts`,
 `apps/web/src/lib/thread-details-styles.ts`, `pull-request-detail.ts`,
 `shortcut-modifiers.ts`), the terminal drawer, its
 links (with the targets of path links, T3's `fileLinks.ts`), selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine

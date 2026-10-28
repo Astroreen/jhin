@@ -40,6 +40,7 @@ import {
   PullRequestDetail,
   PullRequestMergeMethod,
   PullRequestUpdateMethod,
+  PublishedRepository,
   PullResult,
   SOURCE_CONTROL_ACTIONS_STREAM,
   PULL_REQUESTS_CAPABILITY,
@@ -165,7 +166,8 @@ import {
   setupTerminalId,
   type FollowTerminal,
 } from "./setup.ts";
-import { agentWriter } from "./writer.ts";
+import { agentWriter, writingPolicy } from "./writer.ts";
+import { PUBLISH_FORGES, createRepository, ensureRemote, pushFailureDetail } from "./publish.ts";
 
 export { parseNumstat, parseStatus } from "./git.ts";
 export { remoteHost, rollupChecks } from "./github.ts";
@@ -235,7 +237,31 @@ const PROJECT_KEYS = [
   "branchNamePrefix",
   "branchNameInstructions",
   "pullRequestMergeMethod",
+  "writingStyleMode",
+  "writingStyleInstructions",
+  "followChangeRequestTemplates",
 ] as const;
+// T3's writing style settings (D1666), with its words.
+const WritingStyleMode = z.union([
+  z.literal("repo_conventions").meta({ title: "Repository conventions" }),
+  z.literal("conventional_commits").meta({ title: "Conventional Commits" }),
+  z.literal("custom").meta({ title: "Custom instructions" }),
+]);
+const WRITING_STYLE_META = {
+  title: "Source control writing style",
+  description:
+    "Repository conventions: in each project, matches recent change descriptions and change request titles. Conventional Commits: use Conventional Commit prefixes and keep change request text concise. Custom instructions: use your instructions for change descriptions and change requests.",
+};
+const WRITING_INSTRUCTIONS_META = {
+  title: "Custom source control instructions",
+  description: "Used for commit messages and pull requests.",
+  when: { writingStyleMode: "custom" },
+  multiline: true,
+};
+const FOLLOW_TEMPLATES_META = {
+  title: "Follow change request templates",
+  description: "Hand the repository's pull request template to the writer.",
+};
 const MergeMethodSetting = z.union([
   z.literal("merge").meta({ title: "Merge commit" }),
   z.literal("squash").meta({ title: "Squash and merge" }),
@@ -360,6 +386,9 @@ export const Config = z
     branchNamePrefix: z.string().trim().default("jhin").meta(BRANCH_NAME_PREFIX_META),
     branchNameInstructions: z.string().trim().default("").meta(BRANCH_NAME_INSTRUCTIONS_META),
     pullRequestMergeMethod: MergeMethodSetting.optional().meta(MERGE_METHOD_META),
+    writingStyleMode: WritingStyleMode.default("repo_conventions").meta(WRITING_STYLE_META),
+    writingStyleInstructions: z.string().trim().default("").meta(WRITING_INSTRUCTIONS_META),
+    followChangeRequestTemplates: z.boolean().default(true).meta(FOLLOW_TEMPLATES_META),
     // T3's worktree cleanup rules (D1128), all off by default.
     worktreeCleanup: WorktreeCleanupConfig,
     // T3's projectSettingsOverrides of the settings above (D1466, config-ui.md D1462).
@@ -378,6 +407,9 @@ export const Config = z
         ...MERGE_METHOD_META,
         description: "Pull requests in this project start with this method.",
       }),
+      writingStyleMode: WritingStyleMode.optional().meta(WRITING_STYLE_META),
+      writingStyleInstructions: z.string().trim().optional().meta(WRITING_INSTRUCTIONS_META),
+      followChangeRequestTemplates: z.boolean().optional().meta(FOLLOW_TEMPLATES_META),
       worktreeCleanup: ProjectWorktreeCleanup.optional(),
     }),
     writerAgent: z.string().optional().meta({
@@ -2035,7 +2067,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               filePaths: input.filePaths,
               defaultBranch: status.defaultBranch,
               forge: forgeOf(repo, root),
-              writer: writerFor(projectId, input.threadId),
+              writer: writerFor(projectId, input.threadId, { root, git }),
+              followTemplates: projectConfig(projectId).followChangeRequestTemplates,
               progress,
             });
             // The pull request the action created or opened is linked to its thread (T3's
@@ -2606,9 +2639,35 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   }
 
   /** The writer of a project's commit messages, pull requests and branch names (D266). */
-  const writerFor = (projectId: string, threadId: string | undefined) =>
+  const writerFor = (
+    projectId: string,
+    threadId: string | undefined,
+    /** The repository whose conventions the writer follows (D1666). */
+    repository?: { readonly root: string; readonly git: Git },
+  ) =>
     agentWriter({
       runtime: () => writerRuntime(threadId),
+      ...(repository === undefined
+        ? {}
+        : {
+            policy: (runtime: AgentRuntime) => {
+              const { writingStyleMode, writingStyleInstructions } = projectConfig(projectId);
+              return writingPolicy({
+                mode: writingStyleMode,
+                instructions: writingStyleInstructions,
+                root: repository.root,
+                subjects: async () =>
+                  (
+                    await repository.git(["log", "-n", "20", "--no-merges", "--pretty=format:%s"])
+                  ).stdout
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter((line) => line !== ""),
+                // T3 hands CLAUDE.md to a Claude writer alone.
+                claude: /claude/i.test(runtime.agentId),
+              });
+            },
+          }),
       deadline: () => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const reached = new Promise<void>((resolve) => {
@@ -4285,6 +4344,80 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           await createGit(config().gitPath, repo.project.path)(["init", "--quiet"]);
         }
         return refresh(repo);
+      });
+    },
+  });
+
+  context.commands.register({
+    name: "git.publish",
+    title: "Publish repository",
+    description:
+      "Creates a project's repository on GitHub or GitLab (owner/name, private or public), adds it as a remote (origin unless named) and pushes the current branch to it",
+    input: z.object({
+      projectId: z.string().min(1),
+      forge: z.enum(PUBLISH_FORGES),
+      repository: z.string().trim().min(1),
+      visibility: z.enum(["private", "public"]),
+      // A remote's name as git allows it, never one read as an option.
+      remoteName: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9_][A-Za-z0-9._-]*$/, "Not a valid remote name.")
+        .optional(),
+      protocol: z.enum(["ssh", "https"]).optional(),
+    }),
+    output: PublishedRepository,
+    permissions: ["git.write"],
+    handler: async ({ projectId, forge, repository, visibility, remoteName, protocol }) => {
+      const repo = await repoOf(projectId);
+      return exclusive(projectId, async () => {
+        const { git, root } = await gitOf(repo);
+        // Checked before the forge creates anything: a detached HEAD has no branch to publish.
+        const branch = (
+          await git(["symbolic-ref", "--quiet", "--short", "HEAD"], { ok: [0, 1, 128] })
+        ).stdout.trim();
+        if (branch === "") {
+          throw new SourceControlError("ACTION_UNAVAILABLE", "Cannot push from detached HEAD.", {
+            projectId,
+          });
+        }
+        let urls;
+        try {
+          urls = await createRepository(
+            forge,
+            { gh: config().ghPath, glab: config().glabPath, cwd: root },
+            { repository, visibility },
+          );
+        } catch (error) {
+          throw forgeFailure(error, { projectId });
+        }
+        const remoteUrl = protocol === "https" ? urls.httpsUrl : urls.sshUrl;
+        const name = await ensureRemote(git, remoteName ?? "origin", remoteUrl);
+        const published = {
+          repository: { nameWithOwner: urls.nameWithOwner, url: urls.url },
+          remoteName: name,
+          remoteUrl,
+          branch,
+        };
+        // A repository without commits has nothing to push yet: the remote is set up alone.
+        const head = await git(["rev-parse", "--verify", "--quiet", "HEAD"], { ok: [0, 1, 128] });
+        if (head.code !== 0) {
+          await refresh(repo).catch(() => undefined);
+          return { ...published, status: "remote_added" as const };
+        }
+        const pushed = await git(["push", "--set-upstream", name, `HEAD:refs/heads/${branch}`], {
+          ok: [0, 1, 128],
+          timeoutMs: 5 * 60_000,
+        });
+        await refresh(repo).catch(() => undefined);
+        if (pushed.code !== 0) {
+          throw new SourceControlError(
+            "GIT_FAILED",
+            pushFailureDetail({ urls, remoteName: name, remoteUrl, error: pushed.stderr }),
+            { projectId },
+          );
+        }
+        return { ...published, upstreamBranch: `${name}/${branch}`, status: "pushed" as const };
       });
     },
   });
