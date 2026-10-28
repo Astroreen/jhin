@@ -2606,6 +2606,12 @@ Decisions (M3):
   review slice says that the reviews it records are not the slice's proof,
   and to prove it with `slices_prove` once they are recorded. Before, it
   named only `slices_review`, and in the M3 run the reviewer stopped there.
+- **D1577. A reviewer tells the lead every verdict.** The reviewer's brief
+  (D1244) asks it to tell whoever handed it the review slice each verdict it
+  records, a review again after a change too. Before, in the M3 run, the
+  builder asked for the re-review of a changed test, the reviewer sent its
+  approval to the builder, and the lead, whose run had ended, waited for an
+  approval nobody sent it until the owner said so.
 
 ## Deferred
 

@@ -672,6 +672,8 @@ describe("the reviewer's brief (D1244–D1246)", () => {
       "+export const walls = 4;",
       // The reviewed slice names who built it (D1266).
       `Built by ${BUILDER}.`,
+      // Every verdict goes to whoever handed the review out (D1577).
+      "Tell whoever handed you this slice each verdict you record",
     ])
       expect(markdown).toContain(text);
     expect(markdown.indexOf("Ids are public API")).toBeLessThan(

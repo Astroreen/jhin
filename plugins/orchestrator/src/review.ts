@@ -126,6 +126,7 @@ export function reviewBriefText(input: {
     "- Name what you checked (the rules and decisions by number), so a reader sees what you did not check.",
     '- Record your verdict on each slice you review with slices_review { sliceId, verdict, notes }: "approved" or "changes-requested", and in notes what you checked and found. The mission\'s commit or merge waits for an approval after the last change.',
     "- Send the changes you ask for to the slice's builder, named under its heading.",
+    "- Tell whoever handed you this slice each verdict you record, the first and every later one (a review again after a change too): once the mission's run has ended, nothing else tells them.",
     "",
     "## The project's rules",
     "",
