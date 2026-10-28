@@ -671,8 +671,9 @@ export default definePlugin({
         record.resource === urls.resource &&
         scopes.every((scope) => holdsPermission(record.scopes, scope));
       // The answer to its spend never arrived: what it carried is dropped (D1705).
+      const from = http.clientAddress(request);
       const lost =
-        found.kind === "spent" && fits ? refresh.retry(record, asked.clientId) : undefined;
+        found.kind === "spent" && fits ? refresh.retry(record, asked.clientId, from) : undefined;
       if (found.kind === "spent" && lost === undefined) {
         // One of the two holders stole it: neither keeps the sign-in.
         context.log.warn("a spent MCP refresh token was presented again; its sign-in ends");
@@ -694,7 +695,7 @@ export default definePlugin({
         await revokeToken(lost.tokenId);
       }
       // Spent before anything is awaited: the same token twice is a reuse.
-      if (lost === undefined) refresh.spend(record.hash);
+      if (lost === undefined) refresh.spend(record.hash, from);
       const end = async (description: string) => {
         await endSignIn(record.family);
         refused(description);

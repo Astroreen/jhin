@@ -1150,21 +1150,27 @@ config files, so these extend the decisions they name.
   (D420), but a phone paired from a laptop's page is a device of its own,
   listed by its name, and revoking the laptop does not unpair it.
 - **D1705. A retry of a lost refresh answer is not a reuse.** A spent
-  refresh token presented again by its client within 60 seconds of its
+  refresh token presented again by its client, from the client address
+  that spent it (`http.server`'s `clientAddress`), within 60 seconds of its
   spend, while the refresh token that spend issued has not been used, is a
   retry of an answer the client did not get: the node revokes the access
   token that answer carried, forgets the refresh token it carried and
   answers the retry as a new refresh of the spent token's grant (one more
   rotation, D1519's checks again). After the 60 seconds, once the token it
   issued was used, or from another client id, it is a reuse as before and
-  ends the sign-in. Its spend time is kept with the record (`spentAt`,
-  additive; a record without one has no window). The window is Auth0's and
-  Okta's "reuse interval"; RFC 9700 §4.14.2 names none. What a thief gains:
-  a refresh token taken from the wire or the client's storage within 60
-  seconds after its client refreshed, before the client uses the new one,
-  takes the sign-in over (the client's new pair dies, and it signs in
-  again) instead of ending it for both; the sign-in it keeps is listed
-  under Authorized clients and is revoked there.
+  ends the sign-in, as two retries at once do (the second finds the first
+  under way, as two refreshes at once, D1519). Its spend time and address
+  are kept with the record (`spentAt`, `spentFrom`, additive; a record
+  without them has no window). The window is Auth0's and
+  Okta's "reuse interval"; RFC 9700 §4.14.2 names none. So reuse
+  detection is off for that minute while the new token is unused, and a
+  client id is no secret (D1192). What a thief gains: a refresh token
+  taken from the wire or the client's storage within 60 seconds after its
+  client refreshed, before the client uses the new one, and replayed from
+  the client's own address (the same machine, or behind the same proxy or
+  NAT), takes the sign-in over (the client's new pair dies silently, and
+  it signs in again) instead of ending it for both; the sign-in it keeps
+  is listed under Authorized clients and is revoked there.
 - **D1706. A marker is `••••••`, or `••••••#` and a JSON Pointer.**
   `isRedactedSecret` (`@jhin/host-api`) and `host.config.patch` read a
   value that starts with `••••••#` as an addressed marker only when a

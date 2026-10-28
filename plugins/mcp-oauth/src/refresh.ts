@@ -23,6 +23,8 @@ const RefreshRecord = z.object({
   spent: z.boolean(),
   /** When it was spent; a retry of a lost answer counts from it (D1705). */
   spentAt: z.number().optional(),
+  /** Where the spend came from, as `http.server` tells the client's address: a retry comes from there too. */
+  spentFrom: z.string().optional(),
   expiresAt: z.number(),
   clientId: z.string(),
   clientName: z.string(),
@@ -124,23 +126,32 @@ export function createRefreshStore(options: {
     },
 
     /** Marks a token used, before anything is awaited: a second use is a reuse. */
-    spend(hash: string): void {
+    spend(hash: string, from?: string): void {
       const at = now();
       commit(
         records.map((record) =>
-          record.hash === hash ? { ...record, spent: true, spentAt: at } : record,
+          record.hash === hash
+            ? {
+                ...record,
+                spent: true,
+                spentAt: at,
+                ...(from === undefined ? {} : { spentFrom: from }),
+              }
+            : record,
         ),
       );
     },
 
     /**
-     * A spent token presented again by its client within the window, while the
+     * A spent token presented again by its client, from the address that spent
+     * it, within the window, while the
      * token its spend issued is unused, is a retry of an answer that was lost
      * (D1705): forgets that unused token and returns it, so its access token is
      * revoked and the retry refreshes again. Anything else is a reuse.
      */
-    retry(spent: RefreshRecord, clientId: string): RefreshRecord | undefined {
+    retry(spent: RefreshRecord, clientId: string, from?: string): RefreshRecord | undefined {
       if (spent.clientId !== clientId || spent.spentAt === undefined) return undefined;
+      if (spent.spentFrom !== from) return undefined;
       if (now() - spent.spentAt > RETRY_WINDOW_MS) return undefined;
       const family = records.filter((record) => record.family === spent.family);
       const issued = family.at(-1);
