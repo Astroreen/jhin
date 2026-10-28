@@ -260,8 +260,17 @@ test("D1563: a team split over two nodes runs a mission, and goes on once the se
   await page.reload();
   await inboxSection.getByText("The roof tiles are wet.").click();
   await item.getByRole("textbox", { name: "Your answer" }).fill("Dry them first.");
+  const serverMessages = follow(server.client(), "agents/messages");
+  onClose.push(serverMessages);
   await item.getByRole("button", { name: "Send answer" }).click();
   await expect(inboxSection.getByText("Nothing waits for you.")).toBeVisible();
+  // The answer is delivered to builder2 on the server, in reply to its message.
+  const reply = await serverMessages.until(
+    (event) =>
+      event.type === "agents.message.delivered" &&
+      payloadOf(event).message.inReplyTo === note.message.messageId,
+  );
+  expect(payloadOf(reply).message).toMatchObject({ to: address.builder2, body: "Dry them first." });
 
   // 7. The lead runs it again; builder2 proves on the server, naming the mission's node.
   const second = await client.call<{ workflowId: string }>("missions.orchestrate", {

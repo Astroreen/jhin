@@ -288,6 +288,16 @@ describe("a civilization across two nodes (D1563)", () => {
         answer: "Dry it first",
       }),
     ).toMatchObject({ item: { status: "answered" } });
+    // It is delivered to builder2 on b, in reply to its message.
+    const reply = await watch(b.client, MESSAGES_STREAM).untilMatch(
+      (event) =>
+        event.type === MessageEvents.delivered &&
+        payloadOf(event).message.inReplyTo === note.message.messageId,
+    );
+    expect(payloadOf(reply).message).toMatchObject({
+      to: member("b", "builder2"),
+      body: "Dry it first",
+    });
 
     // The lead runs the orchestrator again; the door is proven, then the next wave.
     const second = await orchestrate();
