@@ -2645,6 +2645,16 @@ Decisions (M3):
   an edit that turns it off is `agents.update` with `userSettings` in
   `unset`, so the definition is back to unset rather than `false`. It is a
   field of the existing contribution, so no id is added.
+- **D1570. Since when a node is away survives a restart.** Health keeps
+  since when each node has been away in `storage.kv` (namespace
+  `jhin.health`, key `awaySince`, an optional capability of the plugin) and
+  reads it back when it starts, so a restart of the mission's node does not
+  count a node away all along from the restart: an `away` warning dismissed
+  after that since stays dismissed (D1548). A since read back is held until
+  the mesh lists the node. Listed away, it was away all along and the since
+  stays; listed reachable, it came back while this node was down, so the
+  since is dropped and a later absence counts from then; not listed yet, it
+  waits. A warning is raised only once its since is written.
 
 ## Deferred
 
@@ -2794,9 +2804,13 @@ Decisions (M3):
   `agents.inbox.list`; it does not follow the mesh while the page is open,
   so an item whose sender went away later says so only through the refused
   answer.~~ M3, D1565.
-- M2: since when a node is away is kept in memory (D1548): after a restart
+- ~~M2: since when a node is away is kept in memory (D1548): after a restart
   of the mission's node, a node away all along counts from the restart, so
-  an `away` warning dismissed before is raised once more.
+  an `away` warning dismissed before is raised once more.~~ M3, D1570.
+- M3: a node that went away and came back more than once while the
+  mission's node was down counts as away all along (D1570): the mesh keeps
+  no history to tell it by. A node away at a shutdown and never listed again
+  keeps its `awaySince` entry.
 - M2: a lead whose own node goes away mid-run. Its run went with it, so
   nobody is woken; the mission's node still reads the run from the record
   (D1545), and health warns only of slices waiting on an away node (D1548),
