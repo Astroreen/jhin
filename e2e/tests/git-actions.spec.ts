@@ -242,3 +242,76 @@ test("D260–D274, D1281–D1283, D1663: the chat header's git actions commit, p
     .click();
   await expect(panel).toBeHidden();
 });
+
+test("D1668: a repository without a remote is published through T3's dialog", async ({
+  page,
+}, info) => {
+  let remote = "";
+  const node = await startNode({
+    mode: "ui",
+    setup: (home) => {
+      // The repository GitHub "creates": a bare one on disk as its SSH address.
+      remote = Path.join(home, "published.git");
+      git(home, "init", "--quiet", "--bare", "--initial-branch=main", remote);
+      const dir = Path.join(home, "fake-gh");
+      Fs.mkdirSync(dir, { recursive: true });
+      const gh = Path.join(dir, "gh");
+      Fs.writeFileSync(
+        gh,
+        `#!/bin/sh
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"me"}'; exit 0; fi
+if [ "$1" = "api" ] && [ "$4" = "user/repos" ]; then
+  printf '{"full_name":"me/greeter","html_url":"https://github.com/me/greeter","ssh_url":"%s","clone_url":"https://github.com/me/greeter.git"}' "${remote}"
+  exit 0
+fi
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      const file = Path.join(home, ".jhin", "config.jsonc");
+      const config = JSON.parse(Fs.readFileSync(file, "utf8"));
+      Fs.writeFileSync(
+        file,
+        JSON.stringify(
+          {
+            ...config,
+            "jhin.source-control": { ghPath: gh, writerAgent: "jhin.agent-fake" },
+            "jhin.threads": { defaultAgent: "jhin.agent-fake" },
+          },
+          null,
+          2,
+        ),
+      );
+    },
+  });
+  running.push(node);
+  const dir = Path.join(node.home, "greeter");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  git(dir, "config", "user.name", "Test");
+  git(dir, "config", "user.email", "test@example.com");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "# Greeter\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  const project = await node.client().call<{ id: string }>("projects.create", { path: dir });
+  await node.client().call("threads.create", { projectId: project.id });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await threadRow(page, "New thread").click();
+  const actions = page.getByRole("group", { name: "Git actions" });
+  await actions.getByRole("button", { name: "Publish repository" }).click();
+  const dialog = page.getByRole("dialog", { name: "Publish repository" });
+  await expect(dialog.getByRole("radio", { name: "GitHub" })).toBeChecked();
+  await shot(page, info, "publish-repository-provider");
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await dialog.getByRole("textbox", { name: "Repository" }).fill("me/greeter");
+  await dialog.getByRole("button", { name: "Advanced" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Remote" })).toHaveValue("origin");
+  await shot(page, info, "publish-repository-repository");
+  await dialog.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(dialog.getByText("Repository published")).toBeVisible();
+  await expect(dialog.getByText("main is now live on GitHub.")).toBeVisible();
+  await shot(page, info, "publish-repository-summary");
+  expect(git(remote, "rev-parse", "main").trim()).toBe(git(dir, "rev-parse", "HEAD").trim());
+  expect(git(dir, "rev-parse", "--abbrev-ref", "main@{upstream}").trim()).toBe("origin/main");
+});

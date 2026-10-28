@@ -78,6 +78,8 @@ export interface ActionRun {
   readonly defaultBranch: string | null;
   readonly forge: PullRequestCreator | undefined;
   readonly writer: Writer;
+  /** Hand the repository's pull request template to the writer (D1666; on unless false). */
+  readonly followTemplates?: boolean | undefined;
   progress(event: ProgressEvent): void;
 }
 
@@ -651,7 +653,9 @@ async function pullRequestContent(
       : git(["diff", "--no-color", "--no-ext-diff", `${baseRef}...HEAD`], { maxBytes: 40_000 }),
   ]);
   const template =
-    baseRef === undefined ? undefined : await run.forge?.template?.(baseRef).catch(() => undefined);
+    baseRef === undefined || run.followTemplates === false
+      ? undefined
+      : await run.forge?.template?.(baseRef).catch(() => undefined);
   const entries = commits.stdout
     .split("\x1e")
     .map((entry) => entry.trim())

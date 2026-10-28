@@ -1948,6 +1948,60 @@ and `apps/web/src/components/settings/ProjectDefaultsSettings.tsx`.
   login is a GitHub login gets `https://<host>/<login>.png?size=80`, so a
   row shows the picture instead of the initial (kept when it fails to load).
 
+#### Git actions: writing style and "Publish repository"
+
+At T3 Code `eb7b35ac`: `apps/server/src/git/GitManager.ts` (`resolveStylePolicy`,
+`readRecentCommitSubjects`, `readRepositoryInstructions`),
+`apps/server/src/textGeneration/TextGenerationPresets.ts`,
+`packages/provider-core/src/server/textGenerationPrompts.ts` (`policyInstruction`),
+`apps/web/src/components/settings/SourceControlWritingSettings.tsx`,
+`apps/server/src/sourceControl/SourceControlRepositoryService.ts`
+(`publishRepository`), the providers' `createRepository` and
+`apps/web/src/components/GitActionsControl.{tsx,logic.ts}` (`PublishRepositoryDialog`,
+the quick action's "Publish repository").
+
+- **D1666. T3's writing style for commit messages and pull requests.**
+  `jhin.source-control`'s `writingStyleMode` ("Repository conventions", the
+  default: "In each project, matches recent change descriptions and change
+  request titles."; "Conventional Commits"; "Custom instructions"),
+  `writingStyleInstructions` (a text area, shown for Custom) and
+  `followChangeRequestTemplates` (on), for the node and per project (T3's
+  `sourceControlWritingStyle` is project-scoped). The writer's prompts get
+  T3's policy under "Additional instructions:": Conventional Commits' and
+  Repository conventions' fixed words, the custom instructions for both,
+  and for Repository conventions the 20 latest non-merge commit subjects,
+  the repository's `AGENTS.md` and, when the writer agent is Claude, its
+  `CLAUDE.md` (each at most 20 KB and inside the repository, as T3 reads
+  them). With `followChangeRequestTemplates` off the repository's pull
+  request template is not handed to the writer.
+- **D1667. `git.publish`** (`git.write`; `{ projectId, forge, repository,
+  visibility, remoteName?, protocol? }` → `{ repository: { nameWithOwner,
+  url }, remoteName, remoteUrl, branch, upstreamBranch?, status }`), T3's
+  `sourceControl.publishRepository`: the forge creates the repository
+  (GitHub through `gh api user/repos` or `orgs/<owner>/repos`, the owner
+  being the account's login or an organization; GitLab through `glab api
+  projects` with its namespace), its clone URL of the chosen protocol (SSH
+  by default) becomes the remote (`origin` unless named, reused when it
+  already points there), and the current branch is pushed with `-u`
+  (`pushed`); a repository without commits gets the remote alone
+  (`remote_added`). A push that fails says T3's words with the remote it
+  added. The other forges' `createRepository` are Deferred.
+- **D1668. T3's "Publish repository" in the git actions.** A repository
+  without an upstream and without a remote gets T3's quick action "Publish
+  repository" instead of the disabled Push, which opens T3's dialog
+  ("Publish repository", "Pick where to host it, then point us at a repo to
+  push to."): the steps Provider, Repository and Summary; the provider cards
+  (GitHub, GitLab); the repository as `<host>/` and `owner/repo` (T3's
+  `repositoryPathHint`), Visibility ("Private", "Only invited people";
+  "Public", "Anyone on the web"), "Advanced" with Remote and Protocol (SSH,
+  HTTPS); "Publishing repository to <forge>...", "Publish failed"; and the
+  summary "Repository published" ("<branch> is now live on <forge>.") or
+  "Repository created" with the repository and "Open on <forge>". T3's
+  "Setup Required" card for a forge that is not signed in needs the forges'
+  discovery Jhin lacks; a forge's refusal shows as "Publish failed".
+
+## Deferred
+
 ## Deferred
 
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
@@ -2045,8 +2099,12 @@ and `apps/web/src/components/settings/ProjectDefaultsSettings.tsx`.
   behind being updated anyway (only GitHub's read says so); T3's removal of
   agent credits from a merge's message (`removeAgentCreditsOnMerge`); and
   the review decision off GitHub (T3 has none either).
-- Git actions (D266): T3's "Publish repository", writing style settings, the
-  thread details panel and opening a file from the commit dialog. Writer
+- Git actions (D266; writing style and "Publish repository" since D1666–D1668):
+  publishing to Azure DevOps, Bitbucket and Forgejo, T3's "Setup Required"
+  provider cards and the account prefilled in the repository field (both
+  need T3's forge discovery), a dedicated writer model per project
+  (`sourceControlWriterModelSelection`), the thread details panel and
+  opening a file from the commit dialog. Writer
   turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread
   id, so a runtime that keeps live sessions (Claude Code) keeps one for it
   until its idle time ends; a one-shot text generation operation of the

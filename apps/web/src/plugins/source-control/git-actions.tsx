@@ -1,7 +1,7 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/GitActionsControl.tsx
 // in its toolbar presentation (the quick action and its menu, the progress button with its
 // elapsed time and the hook's last line, the commit dialog, the default branch dialog and the
-// result toasts with their call to action).
+// result toasts with their call to action; "Publish repository" is publish-repository.tsx).
 import { targetKey, type ChatHeaderActionProps, type NodeTarget } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 import {
@@ -11,6 +11,7 @@ import {
   type GitActionResult,
   type GitStackedAction,
   type ProjectStatus,
+  type PublishedRepository,
   type PullResult,
 } from "@jhin/source-control-api";
 import {
@@ -66,6 +67,7 @@ import {
   type GitQuickAction,
 } from "./git-actions-logic.ts";
 import { forgeIcon } from "./forge-icons.tsx";
+import { PublishRepositoryDialog } from "./publish-repository.tsx";
 import type { RunningAction } from "./running.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -107,6 +109,7 @@ function GitQuickActionIcon({
 }) {
   const className = "size-3.5";
   if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
+  if (quickAction.kind === "open_publish") return <CloudUploadIcon className={className} />;
   if (quickAction.kind === "run_action") {
     if (quickAction.action === "commit") return <GitCommitIcon className={className} />;
     if (quickAction.action === "push" || quickAction.action === "commit_push") {
@@ -199,6 +202,7 @@ export function createGitActionsControl(services: SourceControlServices) {
     const [editingFiles, setEditingFiles] = useState(false);
     const [pending, setPending] = useState<PendingDefaultBranchAction | null>(null);
     const [initializing, setInitializing] = useState(false);
+    const [publishOpen, setPublishOpen] = useState(false);
 
     if (projectId === undefined || project?.scratch === true) return null;
     const projectStatus: ProjectStatus | undefined = view.projects.get(projectId);
@@ -378,6 +382,10 @@ export function createGitActionsControl(services: SourceControlServices) {
     const runQuickAction = () => {
       if (quickAction.kind === "run_pull") {
         void runPull();
+        return;
+      }
+      if (quickAction.kind === "open_publish") {
+        setPublishOpen(true);
         return;
       }
       if (quickAction.kind === "show_hint") {
@@ -767,6 +775,22 @@ export function createGitActionsControl(services: SourceControlServices) {
             </DialogFooter>
           </DialogPopup>
         </Dialog>
+
+        <PublishRepositoryDialog
+          onOpenChange={setPublishOpen}
+          open={publishOpen}
+          openUrl={(url) => window.open(url, "_blank", "noopener,noreferrer")}
+          publish={async (input) => {
+            try {
+              return await threads.call<PublishedRepository>(target, "git.publish", {
+                projectId,
+                ...input,
+              });
+            } finally {
+              refreshStatus();
+            }
+          }}
+        />
       </>
     );
   };

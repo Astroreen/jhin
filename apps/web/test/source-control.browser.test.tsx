@@ -1476,6 +1476,61 @@ describe("the git actions in the chat header", () => {
     expect(calls).toEqual([]);
     view.unmount();
   });
+
+  it("publishes a repository without a remote through T3's steps (D1668)", async () => {
+    const { value, calls } = services(
+      viewWith(
+        status({
+          remoteUrl: null,
+          hasPrimaryRemote: false,
+          pullRequests: {},
+          ahead: 1,
+          workingTree: { files: [], fileCount: 0, insertions: 0, deletions: 0, truncated: false },
+        }),
+      ),
+      {
+        "git.publish": {
+          repository: { nameWithOwner: "me/app", url: "https://github.com/me/app" },
+          remoteName: "origin",
+          remoteUrl: "git@github.com:me/app.git",
+          branch: "feature/toolbar",
+          upstreamBranch: "origin/feature/toolbar",
+          status: "pushed",
+        },
+      },
+    );
+    const Control = createGitActionsControl(value);
+    const view = mount(<Control project={project} target={target} thread={thread} />);
+    await act(async () => button(view.container, "Publish repository")!.click());
+    const dialog = () => document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog().textContent).toContain(
+      "Pick where to host it, then point us at a repo to push to.",
+    );
+    expect(dialog().querySelector('[aria-current="step"]')?.textContent).toContain("Provider");
+    await act(async () => button(dialog(), "Next")!.click());
+    expect(dialog().querySelector('[aria-current="step"]')?.textContent).toContain("Repository");
+    const publish = () => button(dialog(), "Publish")!;
+    expect(publish().disabled).toBe(true);
+    const input = dialog().querySelector<HTMLInputElement>("#publish-repository-path")!;
+    expect(input.placeholder).toBe("owner/repo");
+    await userEvent.fill(input, "me/app");
+    await act(async () => publish().click());
+    expect(calls).toContainEqual({
+      method: "git.publish",
+      params: {
+        projectId: "app",
+        forge: "github",
+        repository: "me/app",
+        visibility: "private",
+        remoteName: "origin",
+        protocol: "ssh",
+      },
+    });
+    await expect.element(page.getByText("Repository published")).toBeVisible();
+    expect(dialog().textContent).toContain("feature/toolbar is now live on GitHub.");
+    expect(button(dialog(), "Open on GitHub")).toBeDefined();
+    view.unmount();
+  });
 });
 
 describe("checkpoints in the client", () => {

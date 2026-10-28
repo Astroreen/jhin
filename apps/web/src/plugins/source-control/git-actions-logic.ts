@@ -23,7 +23,7 @@ export interface GitActionMenuItem {
 export interface GitQuickAction {
   readonly label: string;
   readonly disabled: boolean;
-  readonly kind: "run_action" | "run_pull" | "show_hint";
+  readonly kind: "run_action" | "run_pull" | "open_publish" | "show_hint";
   readonly action?: GitStackedAction;
   readonly hint?: string;
 }
@@ -190,13 +190,8 @@ export function resolveQuickAction(
 
   if (!status.hasUpstream) {
     if (!status.hasPrimaryRemote) {
-      // T3 offers "Publish repository" here, which creates the repository on a forge (Deferred).
-      return {
-        label: "Push",
-        disabled: true,
-        kind: "show_hint",
-        hint: 'Add an "origin" remote before pushing.',
-      };
+      // T3's "Publish repository": the repository is created on a forge and pushed (D1668).
+      return { label: "Publish repository", disabled: false, kind: "open_publish" };
     }
     if (!isAhead) {
       if (hasOpenPr) return upToDate;

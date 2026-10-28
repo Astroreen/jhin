@@ -16,7 +16,8 @@ import {
   sanitizeSubject,
   splitUpstream,
 } from "../src/index.ts";
-import { fakeGh, git, node, repository, temp, write } from "./support.ts";
+import { writingPolicy } from "../src/writer.ts";
+import { fakeCli, fakeGh, git, node, repository, temp, write } from "./support.ts";
 
 /** A repository whose `origin` is a bare repository on disk, pushed to once. */
 function withRemote(url?: string) {
@@ -611,5 +612,216 @@ describe("the agent writer", () => {
         patch: "",
       }),
     ).toEqual({ title: "Add a", body: "## Summary\n- Add a\n\n## Testing\n- Not run" });
+  });
+});
+
+describe("T3's writing style (D1666)", () => {
+  /** A runtime that keeps each turn's input and answers nothing. */
+  function recording(agentId = "jhin.agent-fake") {
+    const turns: string[] = [];
+    const runtime: AgentRuntime = {
+      agentId,
+      startTurn: (input) => {
+        turns.push(JSON.stringify(input));
+        return {
+          items: {
+            [Symbol.asyncIterator]: () => ({
+              next: async (): Promise<IteratorResult<AgentItem>> => ({
+                done: true,
+                value: undefined,
+              }),
+            }),
+          },
+          interrupt: () => undefined,
+        };
+      },
+    };
+    return { runtime, turns };
+  }
+
+  it("follows the repository's conventions: its subjects, AGENTS.md, and CLAUDE.md for Claude", async () => {
+    const dir = repository();
+    write(dir, "AGENTS.md", "Use the imperative mood.\n");
+    write(dir, "CLAUDE.md", "Claude only.\n");
+    const subjects = async () => ["feat: add a", "fix: b"];
+    const forFake = await writingPolicy({
+      mode: "repo_conventions",
+      instructions: "",
+      root: dir,
+      subjects,
+      claude: false,
+    });
+    expect(forFake.commit).toBe(
+      "Follow the repository's established commit message style when examples are available.\n\nRecent commit subjects from this repository:\nfeat: add a\nfix: b\n\nLocal AGENTS.md:\nUse the imperative mood.",
+    );
+    const forClaude = await writingPolicy({
+      mode: "repo_conventions",
+      instructions: "",
+      root: dir,
+      subjects,
+      claude: true,
+    });
+    expect(forClaude.pullRequest).toContain("Local CLAUDE.md:\nClaude only.");
+    expect(
+      await writingPolicy({
+        mode: "custom",
+        instructions: " Be terse. ",
+        root: dir,
+        subjects,
+        claude: false,
+      }),
+    ).toEqual({ commit: "Be terse.", pullRequest: "Be terse." });
+    expect(
+      (
+        await writingPolicy({
+          mode: "conventional_commits",
+          instructions: "",
+          root: dir,
+          subjects,
+          claude: false,
+        })
+      ).commit,
+    ).toMatch(/^Use Conventional Commits/);
+  });
+
+  it("puts the policy into the writer's prompts under T3's heading", async () => {
+    const { runtime, turns } = recording();
+    const writer = agentWriter({
+      runtime: async () => runtime,
+      warn: () => undefined,
+      policy: async () => ({ commit: "Commit rule.", pullRequest: "PR rule." }),
+    });
+    await writer.commitMessage({ branch: "main", summary: "", patch: "", includeBranch: false });
+    await writer.pullRequest({
+      base: "main",
+      head: "feature",
+      commits: "",
+      subjects: [],
+      stat: "",
+      patch: "",
+    });
+    expect(turns[0]).toContain("Additional instructions:\\nCommit rule.");
+    expect(turns[1]).toContain("Additional instructions:\\nPR rule.");
+  });
+});
+
+describe("git.publish (D1667)", () => {
+  /** A bare repository standing in for the created one's SSH address. */
+  const bare = () => {
+    const remote = temp("jhin-sc-published-");
+    git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
+    return remote;
+  };
+
+  it("creates the repository on GitHub under the account, adds origin and pushes", async () => {
+    const remote = bare();
+    const gh = fakeCli("gh");
+    gh.answer("api user", { login: "me" });
+    gh.answer("api --method POST user/repos", {
+      full_name: "me/demo",
+      html_url: "https://github.com/me/demo",
+      ssh_url: remote,
+      clone_url: "https://github.com/me/demo.git",
+    });
+    const dir = repository();
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const published = await sc.client.call("git.publish", {
+      projectId,
+      forge: "github",
+      repository: "me/demo",
+      visibility: "private",
+    });
+    expect(published).toEqual({
+      repository: { nameWithOwner: "me/demo", url: "https://github.com/me/demo" },
+      remoteName: "origin",
+      remoteUrl: remote,
+      branch: "main",
+      upstreamBranch: "origin/main",
+      status: "pushed",
+    });
+    expect(gh.calls()).toContain("api --method POST user/repos -f name=demo -F private=true");
+    expect(git(remote, "rev-parse", "main")).toBe(git(dir, "rev-parse", "HEAD"));
+    expect(git(dir, "rev-parse", "--abbrev-ref", "main@{upstream}").trim()).toBe("origin/main");
+  });
+
+  it("creates it in an organization or a GitLab namespace, and only adds the remote without commits", async () => {
+    const gh = fakeCli("gh");
+    gh.answer("api user", { login: "me" });
+    gh.answer("api --method POST orgs/acme/repos", {
+      full_name: "acme/demo",
+      html_url: "https://github.com/acme/demo",
+      ssh_url: "git@github.com:acme/demo.git",
+      clone_url: "https://github.com/acme/demo.git",
+    });
+    const empty = temp("jhin-sc-empty-");
+    git(empty, "init", "--quiet", "--initial-branch=main");
+    const sc = await node();
+    const projectId = await sc.project(empty);
+    expect(
+      await sc.client.call("git.publish", {
+        projectId,
+        forge: "github",
+        repository: "acme/demo",
+        visibility: "public",
+        remoteName: "github",
+        protocol: "https",
+      }),
+    ).toMatchObject({
+      remoteName: "github",
+      remoteUrl: "https://github.com/acme/demo.git",
+      status: "remote_added",
+    });
+    expect(gh.calls()).toContain("api --method POST orgs/acme/repos -f name=demo -F private=false");
+    expect(git(empty, "remote", "get-url", "github").trim()).toBe(
+      "https://github.com/acme/demo.git",
+    );
+
+    const remote = bare();
+    const glab = fakeCli("glab");
+    glab.answer("api namespaces/group%2Fsub", { id: 7 });
+    glab.answer("api --method POST projects", {
+      path_with_namespace: "group/sub/demo",
+      web_url: "https://gitlab.com/group/sub/demo",
+      ssh_url_to_repo: remote,
+      http_url_to_repo: "https://gitlab.com/group/sub/demo.git",
+    });
+    const dir = repository();
+    git(dir, "remote", "add", "origin", "https://example.com/other.git");
+    const other = await sc.project(dir);
+    expect(
+      await sc.client.call("git.publish", {
+        projectId: other,
+        forge: "gitlab",
+        repository: "group/sub/demo",
+        visibility: "private",
+      }),
+    ).toMatchObject({ remoteName: "origin-2", status: "pushed" });
+    expect(glab.calls()).toContain(
+      "api --method POST projects --raw-field path=demo --raw-field name=demo --raw-field visibility=private --raw-field namespace_id=7",
+    );
+  });
+
+  it("says what it did when the push fails, in T3's words", async () => {
+    const gh = fakeCli("gh");
+    gh.answer("api user", { login: "me" });
+    gh.answer("api --method POST user/repos", {
+      full_name: "me/demo",
+      html_url: "https://github.com/me/demo",
+      ssh_url: "/nonexistent/jhin/remote.git",
+      clone_url: "https://github.com/me/demo.git",
+    });
+    const sc = await node();
+    const projectId = await sc.project(repository());
+    await expect(
+      sc.client.call("git.publish", {
+        projectId,
+        forge: "github",
+        repository: "me/demo",
+        visibility: "private",
+      }),
+    ).rejects.toThrow(
+      'Created me/demo and added it as remote "origin", but the push failed. Fix the problem, then push again.',
+    );
   });
 });
