@@ -56,7 +56,13 @@ async function createOnGitHub(
       "login"
     ],
   );
-  const own = viewer !== undefined && viewer.toLowerCase() === owner.toLowerCase();
+  if (viewer === undefined) {
+    throw new ForgeUnavailable("failed", "GitHub did not say which account is signed in.");
+  }
+  if (owner.includes("/")) {
+    throw new ForgeUnavailable("failed", `${input.repository} names no GitHub owner/repository.`);
+  }
+  const own = viewer.toLowerCase() === owner.toLowerCase();
   let created: Record<string, unknown> | null;
   try {
     created = json(

@@ -2004,8 +2004,6 @@ the quick action's "Publish repository").
 
 ## Deferred
 
-## Deferred
-
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
   the scratch one, sparse checkouts, nested checkpoint scopes (a subagent's
   own checkpoints), retries on `index.lock` contention and T3's per-path
