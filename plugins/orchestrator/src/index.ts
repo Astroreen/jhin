@@ -327,6 +327,8 @@ export default definePlugin({
       readonly parentThreadId?: string;
       readonly nodeId?: string;
       readonly lead?: string;
+      /** The run's status as its node last told this one (D1571). */
+      readonly status?: string;
     }
     const runOf = async (missionId: string) =>
       (await kv.get(NAMESPACE, `run/${missionId}`)) as RunRecord | undefined;
@@ -1488,6 +1490,7 @@ export default definePlugin({
             parentThreadId,
             nodeId: runNode,
             lead,
+            status,
           });
           // A run that ended before its start was recorded is reported now.
           const early = (await kv.get(NAMESPACE, `ended/${missionId}`)) as
@@ -1497,6 +1500,13 @@ export default definePlugin({
             await kv.delete(NAMESPACE, `ended/${missionId}`);
             if (early.workflowId !== workflowId || early.node !== runNode)
               return { recorded: true };
+            await kv.set(NAMESPACE, `run/${missionId}`, {
+              workflowId,
+              parentThreadId,
+              nodeId: runNode,
+              lead,
+              status: early.status,
+            });
             if (early.status === "failed" || early.status === "stopped") {
               reportLater(missionId, early.status, workflowId, early.error);
             }
@@ -1514,6 +1524,8 @@ export default definePlugin({
           });
           return { recorded: false };
         }
+        // The mission's node keeps how the run stands, for health to read while its node is away (D1571).
+        await kv.set(NAMESPACE, `run/${missionId}`, { ...current, status });
         if ((status === "failed" || status === "stopped") && !isClosed(mission.status)) {
           reportLater(missionId, status, workflowId, error);
         }
@@ -1664,27 +1676,49 @@ export default definePlugin({
       name: "missions.orchestration",
       description:
         "The orchestrator run of a mission, the last one missions.orchestrate started: its workflow, the thread it runs from, its status, last log lines and result. With the head of the `orchestration` stream it reflects, to follow the run from there",
-      input: z.object({ missionId: z.string() }),
+      input: z.object({
+        missionId: z.string(),
+        /** Answer `recorded` without the run when its node cannot be reached, instead of failing (health, D1571). */
+        offline: z.boolean().optional(),
+      }),
       output: z.object({
         /** The `orchestration` stream's head, read before the run: follow it after this. */
         head: z.number(),
         run: OrchestratorRun.nullable(),
+        /** What this node recorded of the run, readable while the run's node is away (D1571). */
+        recorded: z
+          .object({
+            workflowId: z.string(),
+            nodeId: z.string().optional(),
+            status: z.string().optional(),
+          })
+          .optional(),
       }),
       permissions: ["missions.read", "threads.read"],
-      handler: async ({ missionId }, invocation) => {
+      handler: async ({ missionId, offline }, invocation) => {
         await sync();
         getMission(missionId);
         const streamHead = await log.head(ORCHESTRATION_STREAM);
         const last = await runOf(missionId);
         if (last?.workflowId === undefined) return { head: streamHead, run: null };
-        // A run of another node is read there (D1545).
-        const runs = await workflowsOf(last, invocation);
-        const found = runs.find((item) => item.workflowId === last.workflowId);
-        if (found === undefined) return { head: streamHead, run: null };
-        const view = OrchestratorRun.parse(found);
         const node = elsewhere(last);
+        const recorded = {
+          workflowId: last.workflowId,
+          ...(node === undefined ? {} : { nodeId: node }),
+          ...(last.status === undefined ? {} : { status: last.status }),
+        };
+        // A run of another node is read there (D1545); with `offline`, a node that cannot be reached leaves what is recorded.
+        const runs =
+          node === undefined || offline !== true
+            ? await workflowsOf(last, invocation)
+            : await workflowsOf(last, invocation).catch(() => undefined);
+        if (runs === undefined) return { head: streamHead, run: null, recorded };
+        const found = runs.find((item) => item.workflowId === last.workflowId);
+        if (found === undefined) return { head: streamHead, run: null, recorded };
+        const view = OrchestratorRun.parse(found);
         return {
           head: streamHead,
+          recorded,
           run: {
             ...view,
             logs: view.logs.slice(-5),
