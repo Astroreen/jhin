@@ -455,13 +455,15 @@ export async function orphanEntries(
     const stat = await Fs.stat(folder).catch(() => undefined);
     if (stat === undefined || stat.mtimeMs > now - ORPHAN_GRACE_MS) return;
     if (!sizes.has(folder) && (first || Date.now() < budgetEnd)) {
+      const own = first;
       const measured = await measureFolder(
         folder,
-        first ? Date.now() + MEASURE_TIMEOUT_MS : budgetEnd,
+        own ? Date.now() + MEASURE_TIMEOUT_MS : budgetEnd,
       );
       first = false;
-      // A walk cut short by the shared budget is tried again next sweep.
-      if (measured !== null || Date.now() < budgetEnd) sizes.set(folder, measured);
+      // The first walk reached its own limit: even unmeasurable, it is kept, so it does not
+      // take every sweep's budget again (T3). A walk cut short by the shared budget is retried.
+      if (own || measured !== null || Date.now() < budgetEnd) sizes.set(folder, measured);
     }
     entries.push({
       path: folder,
