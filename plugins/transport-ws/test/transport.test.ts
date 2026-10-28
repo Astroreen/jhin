@@ -1125,10 +1125,10 @@ describe("pairing (security.md D419–D422)", () => {
       "auth.tokens.issue",
       { label: "grandchild", permissions: ["app.read"] },
     );
-    const { clients } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+    const { clients: listed } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
       clients: { id: string; parent?: string }[];
     };
-    expect(clients.find((client) => client.id === grandchild.id)?.parent).toBe(
+    expect(listed.find((client) => client.id === grandchild.id)?.parent).toBe(
       `client:${device.id}`,
     );
     const { revoked } = (await node.kernel.commands.execute("auth.clients.revoke", {
