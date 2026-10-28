@@ -409,6 +409,23 @@ describe("jhin.agent-claude: a turn", () => {
     expect(prompt.append.endsWith("\n\nYou are Builder.")).toBe(true);
   });
 
+  it("leaves the node user's own settings out only when the turn says so (D1561)", async () => {
+    const turns = [false, undefined].map((userSettings) =>
+      start(
+        [
+          async function* () {
+            yield init();
+            yield result();
+          },
+        ],
+        userSettings === undefined ? {} : { userSettings },
+      ),
+    );
+    for (const { turn } of turns) await drain(turn);
+    expect(turns[0]!.calls[0]!.options.settingSources).toEqual(["project", "local"]);
+    expect(turns[1]!.calls[0]!.options).not.toHaveProperty("settingSources");
+  });
+
   it("counts a defined agent's turns as its runtime's (D610)", () => {
     const history = [
       {

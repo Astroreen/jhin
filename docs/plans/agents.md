@@ -2529,6 +2529,21 @@ Decisions:
   The thread plays the owner, lands what the run breaks, and writes an
   "M3 run" note here, with lore if the run earns it.
 
+Decisions (M3):
+
+- **D1561. A defined agent works without the node user's own settings.**
+  An agent's definition (D604) takes `userSettings` (a team member's too),
+  off when unset, and `TurnRequest` carries it to the runtime
+  (`agent.runtime@1.16`): `false` leaves out what the node machine's user
+  keeps for themselves, and the agent works from its project, its
+  instructions and its knowledge. Claude Code then loads its `project` and
+  `local` setting sources only, not `user` (`~/.claude`: `CLAUDE.md`,
+  memory, skills, plugins, hooks); its sign-in is read all the same. The
+  choice is part of the launch key (D99), so changing it starts Claude Code
+  again. Runtimes as implicit agents (D601), the owner's own threads, load
+  everything as before. Before, in the L3 run, the crew's closing words and
+  answers to asks came in Russian from the owner's personal `CLAUDE.md`.
+
 ## Deferred
 
 - Pods (groups inside a team).
@@ -2829,10 +2844,18 @@ Decisions:
 - L3: a wave's handoffs to one agent as one message. Each handoff starts a
   turn of its own; an agent that does the whole wave in the first spends the
   others on "Duplicate handoff" (the L3 run).
-- L3: which setting sources a defined agent's runtime loads. Claude Code
+- ~~L3: which setting sources a defined agent's runtime loads. Claude Code
   reads the node machine user's own `~/.claude` (`CLAUDE.md`, memory,
   skills), so a team inherits the owner's personal instructions; a choice in
-  the agent's definition (D604) is the owner's to make.
+  the agent's definition (D604) is the owner's to make.~~ M3, D1561.
+- M3: `userSettings` for Codex and OpenCode. Codex reads `~/.codex`
+  (`AGENTS.md`) and OpenCode its user config whatever the turn says; leaving
+  them out takes a home of their own without losing the sign-in (D1561).
+- M3: `userSettings` in Civilization's agent form (D1065); Settings edits it
+  as a field of `jhin.agents` meanwhile.
+- M3: the account's own connectors (Claude Code's claude.ai MCP servers)
+  still reach a defined agent without user settings (D1561): they come with
+  the sign-in, not from `~/.claude`.
 - L3: refocus after a natural compaction in a long run. The run's 1M-token
   windows never filled in two hours; D710 was proven on a manual `/compact`.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice

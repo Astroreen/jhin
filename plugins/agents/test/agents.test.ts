@@ -132,6 +132,8 @@ describe("defined agents", () => {
     expect(first?.instructions).toContain(`jhin://${NODE_ID}/agents/builder`);
     expect(first?.instructions).toContain("generation 1");
     expect(first?.instructions).toContain(builder.role);
+    // The node user's own settings stay out unless the definition says so (D1561).
+    expect(first?.userSettings).toBe(false);
     // Knowledge first, by file name; only Markdown (D607).
     const text = first?.input.text ?? "";
     expect(text.indexOf("The map comes first.")).toBeLessThan(text.indexOf("smallest proof"));
