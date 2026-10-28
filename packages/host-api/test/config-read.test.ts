@@ -60,4 +60,18 @@ describe("readConfigSections (config-ui.md D1624)", () => {
       { error: "denied", layers: {} },
     ]);
   });
+
+  it("leaves a throwing onSection to its caller, landing nothing twice", async () => {
+    const calls: string[] = [];
+    const call: ConfigCall = async (method) => {
+      calls.push(method);
+      return { sections: { a: readOf("a") } };
+    };
+    await expect(
+      readConfigSections(call, ["a"], () => {
+        throw new Error("caller's bug");
+      }),
+    ).rejects.toThrow("caller's bug");
+    expect(calls).toEqual(["host.config.sections"]);
+  });
 });

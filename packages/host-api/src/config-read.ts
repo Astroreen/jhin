@@ -7,7 +7,11 @@ export interface ConfigReadComment {
   readonly text: string;
 }
 
-/** What `host.config.get` answers for one section; secrets come redacted (security.md D417). */
+/**
+ * What `host.config.get` answers for one section (its output schema in
+ * `@jhin/node-host` is the source); secrets come redacted (security.md D417).
+ * `comments` is optional because nodes older than D81 send none.
+ */
 export interface ConfigRead {
   /** Absent when the section is not defined or its value is invalid. */
   readonly value?: unknown;
@@ -42,17 +46,12 @@ export async function readConfigSections(
     onSection?.(section, answer);
   };
   if (sections.length === 0) return read;
+  // The call alone is tried: a throwing `onSection` is the caller's, never a reason to fall back.
+  let answer: { sections: Record<string, ConfigRead> } | undefined;
   try {
-    const answer = (await call("host.config.sections", { sections: [...sections] })) as {
+    answer = (await call("host.config.sections", { sections: [...sections] })) as {
       sections: Record<string, ConfigRead>;
     };
-    for (const section of sections) {
-      land(
-        section,
-        answer.sections[section] ?? { error: `The node did not read ${section}`, layers: {} },
-      );
-    }
-    return read;
   } catch (error) {
     if (!notFound(error)) {
       for (const section of sections)
@@ -60,14 +59,25 @@ export async function readConfigSections(
       return read;
     }
   }
+  if (answer !== undefined) {
+    for (const section of sections) {
+      land(
+        section,
+        answer.sections[section] ?? { error: `The node did not read ${section}`, layers: {} },
+      );
+    }
+    return read;
+  }
   // A node older than D1624.
   await Promise.all(
     sections.map(async (section) => {
+      let one: ConfigRead;
       try {
-        land(section, (await call("host.config.get", { section })) as ConfigRead);
+        one = (await call("host.config.get", { section })) as ConfigRead;
       } catch (error) {
-        land(section, { error: (error as Error).message, layers: {} });
+        one = { error: (error as Error).message, layers: {} };
       }
+      land(section, one);
     }),
   );
   return read;

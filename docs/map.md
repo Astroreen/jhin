@@ -109,7 +109,8 @@ The builtin `jhin.host-streams` serves the live streams `host/config`
 (`host.device-settings.get`/`.patch`, D487).
 `@jhin/host-api`'s `sendConfigChange` sends a config change to a node of any
 age (`configEdits`, `configChange`; `plans/config-ui.md` D475), and `readConfigSections` reads
-sections from a node of any age (D1624).
+sections from a node of any age (D1624); `configCommentsBySection` (`@jhin/kernel`)
+reads the comments of every section of a file in one pass.
 A config field asks for a control a plugin contributes with
 `.meta({ control })`: the slot `settings.config.control.<name>`
 (`configControlSlot`, `ConfigControlProps` in `@jhin/client-api`; `Slot`'s
