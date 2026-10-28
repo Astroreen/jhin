@@ -659,6 +659,54 @@ describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
     expect(thirdUrl.hasSecret).toBe(true);
     expect((await signed(thirdUrl.url!, "s3cret")).status).toBe(202);
   });
+
+  it("deletes a secret the store could not delete at the next activation, unless its task holds one again (D1707)", async () => {
+    const secrets = memorySecrets();
+    const first = await node({ http: true, secrets });
+    const gone = await webhookTask(first.client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "gone" } },
+    });
+    const back = await webhookTask(first.client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "old" } },
+    });
+    const name = (id: string) => `jhin.scheduler/webhook/${id}`;
+    // The store cannot be read while the task goes and the signature is removed.
+    secrets.readable = false;
+    await first.client.call("scheduler.tasks.delete", { id: gone.id });
+    await first.client.call("scheduler.tasks.update", {
+      id: back.id,
+      schedule: { type: "webhook", signature: null },
+    });
+    secrets.readable = true;
+    // Signed again: the task holds a secret in the store again.
+    await first.client.call("scheduler.tasks.update", {
+      id: back.id,
+      schedule: { type: "webhook", signature: { ...signature, secret: "n3w" } },
+    });
+    await first.stop();
+    expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toEqual([
+      gone.id,
+      back.id,
+    ]);
+    expect(secrets.named.get(name(gone.id))).toBe("gone");
+
+    // A store that still cannot be read keeps them listed.
+    secrets.readable = false;
+    const second = await node({ storage: first.storage, http: true, secrets });
+    await second.stop();
+    expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toEqual([
+      gone.id,
+      back.id,
+    ]);
+
+    secrets.readable = true;
+    const third = await node({ storage: first.storage, http: true, secrets });
+    // Stopping waits for the sweep.
+    await third.stop();
+    expect(secrets.named.has(name(gone.id))).toBe(false);
+    expect(secrets.named.get(name(back.id))).toBe("n3w");
+    expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toBeUndefined();
+  });
 });
 
 describe("jhin.scheduler: webhook prompts", () => {

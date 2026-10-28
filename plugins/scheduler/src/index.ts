@@ -97,6 +97,8 @@ const hasSecret = (task: StoredTask) =>
 
 /** A task's signing secret in the secret store (D1512). */
 const secretName = (taskId: string) => `${NAMESPACE}/webhook/${taskId}`;
+/** The `storage.kv` key listing tasks whose signing secret is still to delete (D1707). */
+const ORPHANS_KEY = "secret-orphans";
 
 type Trigger = "scheduled" | "manual" | "webhook";
 
@@ -268,17 +270,46 @@ function activateScheduler(context: PluginContext): void {
     return { ...token, webhookSecretInStore: true };
   };
 
-  /** Forgets a task's secret in the store; a failure leaves it there and is logged. */
+  /** Tasks whose secret the store could not delete, tried again at activation (D1707). */
+  let orphanWrites = Promise.resolve();
+  const changeOrphans = (change: (ids: readonly string[]) => readonly string[]) => {
+    orphanWrites = orphanWrites
+      .then(async () => {
+        const kept = await kv.get(NAMESPACE, ORPHANS_KEY);
+        const ids = Array.isArray(kept) ? kept.filter((id) => typeof id === "string") : [];
+        const next = [...new Set(change(ids))];
+        if (next.length === ids.length && next.every((id) => ids.includes(id))) return;
+        if (next.length === 0) await kv.delete(NAMESPACE, ORPHANS_KEY);
+        else await kv.set(NAMESPACE, ORPHANS_KEY, next);
+      })
+      .catch((error: unknown) =>
+        context.log.warn("could not remember a webhook's signing secret to delete", {
+          error: messageOf(error),
+        }),
+      );
+    return orphanWrites;
+  };
+
+  /** Deletes a task's secret from the store; throws when it cannot. */
+  const deleteSecret = (id: string) => {
+    const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+    if (store?.deleteSecret === undefined) throw new SecretsError("SECRET_STORE_UNAVAILABLE");
+    store.deleteSecret(secretName(id));
+  };
+
+  /**
+   * Forgets a task's secret in the store; a failure is logged and the task's id
+   * remembered, so a later activation deletes it (D1707).
+   */
   const forgetSecret = (id: string) => {
     try {
-      const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
-      if (store?.deleteSecret === undefined) throw new SecretsError("SECRET_STORE_UNAVAILABLE");
-      store.deleteSecret(secretName(id));
+      deleteSecret(id);
     } catch (error) {
-      context.log.warn("could not delete a webhook's signing secret", {
+      context.log.warn("could not delete a webhook's signing secret; it is deleted later", {
         taskId: id,
         error: messageOf(error),
       });
+      void changeOrphans((ids) => [...ids, id]);
     }
   };
 
@@ -819,11 +850,43 @@ function activateScheduler(context: PluginContext): void {
     }),
   );
 
+  // Secrets the store could not delete before, deleted now it can be read (D1707).
+  const swept = migrated
+    .then(async () => {
+      if (namedSecrets() === undefined) return;
+      const kept = await kv.get(NAMESPACE, ORPHANS_KEY);
+      if (!Array.isArray(kept) || kept.length === 0) return;
+      const done: string[] = [];
+      for (const id of kept) {
+        if (typeof id !== "string") continue;
+        // A task that holds a secret in the store again keeps it.
+        if ((await load(id))?.webhookSecretInStore === true) {
+          done.push(id);
+          continue;
+        }
+        try {
+          deleteSecret(id);
+          done.push(id);
+        } catch (error) {
+          context.log.warn("could not delete a webhook's signing secret; it stays listed", {
+            taskId: id,
+            error: messageOf(error),
+          });
+        }
+      }
+      await changeOrphans((ids) => ids.filter((id) => !done.includes(id)));
+    })
+    .catch((error: unknown) =>
+      context.log.warn("could not delete webhook signing secrets left in the store", {
+        error: messageOf(error),
+      }),
+    );
+
   context.onDeactivate(async () => {
     stopped = true;
     clearTimeout(timer);
     timer = undefined;
-    await Promise.allSettled([recovered, migrated]);
+    await Promise.allSettled([recovered, migrated, swept, orphanWrites]);
     await Promise.allSettled([...activeRuns.values(), ticking, arming]);
     // Deliveries still queued are marked failed, not run.
     await Promise.allSettled([...webhookQueues.values()].map((queue) => queue.tail));
