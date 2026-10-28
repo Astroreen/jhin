@@ -384,7 +384,8 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   It is a contribution shape every settings page can use, not a node config
   special case (AGENTS.md rule 7). A click scrolls the section into view and
   focuses its heading. The entry of the section in view is marked current as
-  the page scrolls. The URL hash names the section (`#jhin.web-ui`), so a
+  the page scrolls. The URL hash names the section (`#jhin.web-ui`; as the
+  route's field `a`, D1628), so a
   link or a reload opens at it. On a narrow screen, where the navigation
   folds away, the same list is a "Jump to section" menu at the top of the
   page.
@@ -398,7 +399,8 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   lands.
 - **D1625. Sections off screen cost little.** A section's form is rendered
   when it comes near the viewport (an `IntersectionObserver` with a margin),
-  with a placeholder of its last height before that. The find of the
+  with a placeholder of its last height before that (estimated from its
+  fields for now, see Deferred). The find of the
   browser and the hash link of D1623 still reach every section: a section a
   link or a jump names is rendered first.
 - **D1626. Edits belong to their section.** Each section keeps its own

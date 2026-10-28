@@ -736,7 +736,12 @@ function ConfigPage({
           ) : (
             <SectionPlaceholder
               name={item.name}
-              onFound={() => select(`${PAGE}/${item.name}`)}
+              // The browser's find scrolls to its match itself: the section only renders.
+              onFound={() =>
+                setShown((before) =>
+                  before.has(item.name) ? before : new Set(before).add(item.name),
+                )
+              }
               schema={schemas?.[item.name]}
               title={item.title}
             />

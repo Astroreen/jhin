@@ -217,9 +217,13 @@ export const settingsPlugin = builtin(
         const shown = route.section ?? sections.list()[0]?.id;
         const outline = shown === undefined ? undefined : outlines.all().get(shown);
         if (outline?.confirmLeave === undefined) return then();
-        void outline.confirmLeave().then((ok) => {
-          if (ok) then();
-        });
+        // A page that cannot answer keeps the user where they are.
+        void outline
+          .confirmLeave()
+          .then((ok) => {
+            if (ok) then();
+          })
+          .catch(() => undefined);
       };
       const pages: SettingsPages = {
         addSection: (section) => sections.add(section),
