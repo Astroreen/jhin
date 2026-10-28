@@ -124,7 +124,16 @@ export default definePlugin({
               "device tokens unreadable and the repair could not be written; none are accepted until they are issued again",
               { moved, error, failed, unreadable, expired },
             ),
+      Date.now,
+      // A device seen again tells the clients list (security.md D1708).
+      (error) =>
+        error === undefined
+          ? context.events.emit(AuthEvents.clientsChanged, {})
+          : context.log.warn("could not write when devices were last seen", {
+              error: String(error),
+            }),
     );
+    context.onDeactivate(() => clients.flush());
     const existing = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8").trim() : "";
     let token: string;
     if (existing.length >= MIN_TOKEN_LENGTH) {

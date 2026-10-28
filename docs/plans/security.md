@@ -1179,6 +1179,19 @@ config files, so these extend the decisions they name.
   and `••••••#` are values like any other, saved and sealed as the
   secrets they are. A real value that starts with `••••••#/` still reads as a
   marker (Deferred).
+- **D1708. When a device was last seen is written and told.** D1188's
+  list said "Connected …" from a `lastSeenAt` kept in memory, written only
+  with the next change of `clients.json` and never told. Now a sighting
+  (a device token checked: a connect, a ticket, an MCP request) writes
+  `clients.json` when the file's `lastSeenAt` of that device is missing or
+  an hour old, and `jhin.auth-token` writes what it holds when it stops;
+  a write that fails is logged, never fails the sighting and is tried
+  again an hour later, not on every sighting. A sighting a
+  minute or more after that device's last told one emits
+  `auth.clients.changed` (D1188), so the settings page reads the list
+  again and "Connected …" moves within a minute. A crash loses at most an
+  hour of sightings. T3's per-session "Connected" dot (a device connected
+  right now) is still not ported (Deferred).
 
 ## PR plan
 
@@ -1332,6 +1345,9 @@ A slice a PR, in the order of D1701's risks:
   while `••••••#/keys/1` keeps its secret, and a signing secret the store
   could not delete is deleted at the next activation unless its task holds
   one again.
+- **PR 7e — last seen** (D1708). **Done when:** a sighting is written
+  hourly and on stop, told at most once a minute, and a failed write never
+  fails it.
 
 ## Deferred
 
@@ -1433,16 +1449,17 @@ A slice a PR, in the order of D1701's risks:
   page does; a confirmation naming the node before it is saved is not
   added.
 - Live updates of the authorized clients list (D1188) say only that the
-  list changed; T3's per-session "Connected" dot is not ported: a client's
-  `lastSeenAt` changes with no event, so "Connected …" updates with the next
-  change or reload, and a device that paired but has not connected yet
-  reads "Not connected yet.".
+  list changed; T3's per-session "Connected" dot (a device connected right
+  now) is not ported: "Connected …" is when it was last seen, told at most
+  once a minute (D1708), and a device that paired but has not connected
+  yet reads "Not connected yet.". A bound device's sightings are its
+  tickets, not each use of one.
 - `auth.permissions.list` names streams (D1371) only for a transport that
   provides `rpc.streams` 1.3 and only with fixed permissions; a guard
   given as a function of the stream is not listed.
-- `lastSeenAt` is kept in memory and written with the next change of
-  `clients.json`, so a restart may lose the latest ones. Expired tokens are
-  dropped from the file with the next write.
+- `lastSeenAt` is written at most hourly per device and when the plugin
+  stops (D1708), so a crash may lose the last hour of it. Expired tokens
+  are dropped from the file with the next write.
 - MCP refresh tokens (D1519): `refresh.json` is written whole and
   synchronously on each issue and spend, on the token request's path, as
   `clients.json` is; a failed write answers the request with an error

@@ -2,9 +2,10 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import type { Logger } from "@jhin/sdk";
-import { createTestKernel, mockCapability } from "@jhin/testing";
-import { describe, expect, it } from "vite-plus/test";
+import { AUTH_VERIFIER_CAPABILITY, AuthEvents, type AuthVerifier } from "@jhin/auth-api";
+import { definePlugin, type Logger, type PluginContext } from "@jhin/sdk";
+import { createTestKernel, mockCapability, testManifest } from "@jhin/testing";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { createClientStore, type ClientRepair } from "../src/clients.ts";
 import auth from "../src/index.ts";
@@ -12,6 +13,10 @@ import auth from "../src/index.ts";
 const authManifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).jhin;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const tempFile = () =>
   Path.join(Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-clients-")), "clients.json");
@@ -92,6 +97,72 @@ describe("device token store (security.md D411)", () => {
       store.issue({ label: "x", permissions: ["*"], method: "issued", now: 1 });
       expect(Fs.readFileSync(moved, "utf8")).toBe(content);
     }
+  });
+
+  it("writes when a device was last seen at most hourly and on flush, and tells the list at most once a minute (security.md D1708)", () => {
+    const file = tempFile();
+    const seen: unknown[] = [];
+    const store = createClientStore(
+      file,
+      undefined,
+      () => 0,
+      (error) => seen.push(error),
+    );
+    const { record, token } = store.issue({
+      label: "phone",
+      permissions: ["*"],
+      method: "issued",
+      now: 0,
+    });
+    const inFile = () => createClientStore(file).get(record.id)?.lastSeenAt;
+    const MINUTE = 60_000;
+
+    // The first sighting is written and told.
+    store.verify(token, MINUTE);
+    expect(inFile()).toBe(MINUTE);
+    expect(seen).toEqual([undefined]);
+    // Seen again within the minute: neither.
+    store.verify(token, MINUTE + 30_000);
+    expect(seen).toHaveLength(1);
+    expect(inFile()).toBe(MINUTE);
+    // A minute after the last telling: told, not yet written.
+    store.verify(token, 2 * MINUTE);
+    expect(seen).toHaveLength(2);
+    expect(store.get(record.id)?.lastSeenAt).toBe(2 * MINUTE);
+    expect(inFile()).toBe(MINUTE);
+    // An hour after the one in the file: written.
+    store.verify(token, 61 * MINUTE);
+    expect(inFile()).toBe(61 * MINUTE);
+    // Stopping writes the latest one.
+    store.verify(token, 62 * MINUTE);
+    expect(inFile()).toBe(61 * MINUTE);
+    store.flush();
+    expect(inFile()).toBe(62 * MINUTE);
+  });
+
+  it("never fails a sighting on the disk; it tells the failure instead (security.md D1708)", () => {
+    const file = tempFile();
+    const seen: unknown[] = [];
+    const store = createClientStore(
+      file,
+      undefined,
+      () => 0,
+      (error) => seen.push(error),
+    );
+    const { token } = store.issue({ label: "phone", permissions: ["*"], method: "issued", now: 0 });
+    // A directory where the temporary file goes: every write fails.
+    Fs.mkdirSync(`${file}.${process.pid}.tmp`);
+    expect(store.verify(token, 1000)).toMatchObject({ lastSeenAt: 1000 });
+    expect(seen[0]).toBeInstanceOf(Error);
+    const failures = () => seen.filter((item) => item instanceof Error);
+    // Not tried again on every sighting: an hour later.
+    store.verify(token, 2000);
+    expect(failures()).toHaveLength(1);
+    store.verify(token, 1000 + 60 * 60_000);
+    expect(failures()).toHaveLength(2);
+    // Stopping tries once more.
+    store.flush();
+    expect(failures()).toHaveLength(3);
   });
 
   it("drops expired tokens with the next write", () => {
@@ -288,6 +359,66 @@ describe("repairing an unreadable clients.json from itself (security.md D1518)",
       () => NOW,
     );
     expect(reported).toMatchObject([{ kept: 2, unreadable: 1, expired: 1 }]);
+  });
+
+  it("tells the clients list of a sighting and writes the last one when it stops (security.md D1708)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-clients-plugin-"));
+    let probe: PluginContext | undefined;
+    const kernel = await createTestKernel({
+      plugins: [
+        mockCapability("host.paths", {
+          home: data,
+          dataDir: (id: string) => {
+            Fs.mkdirSync(Path.join(data, id), { recursive: true });
+            return Path.join(data, id);
+          },
+        }),
+        { manifest: authManifest, definition: auth },
+        {
+          manifest: testManifest("app.probe", { requires: { "auth.verifier": "^1.0.0" } }),
+          definition: definePlugin({
+            activate(context) {
+              probe = context;
+            },
+          }),
+        },
+      ],
+    });
+    try {
+      const told: unknown[] = [];
+      kernel.events.on(AuthEvents.clientsChanged, (payload) => told.push(payload));
+      const { id, token } = (await kernel.commands.execute("auth.tokens.issue", {
+        label: "phone",
+        permissions: ["app.read"],
+      })) as { id: string; token: string };
+      const verifier = probe!.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
+      const inFile = () =>
+        (
+          JSON.parse(
+            Fs.readFileSync(Path.join(data, "jhin.auth-token", "clients.json"), "utf8"),
+          ) as { clients: { id: string; lastSeenAt?: number }[] }
+        ).clients.find((client) => client.id === id)?.lastSeenAt;
+
+      const issuedTold = told.length;
+      const first = Date.now();
+      await verifier.verify({ token });
+      expect(told).toHaveLength(issuedTold + 1);
+      expect(inFile()).toBe(first);
+      vi.setSystemTime(first + 5 * 60_000);
+      await verifier.verify({ token });
+      expect(told).toHaveLength(issuedTold + 2);
+      expect(inFile()).toBe(first);
+    } finally {
+      await kernel.stop();
+    }
+    expect(
+      (
+        JSON.parse(Fs.readFileSync(Path.join(data, "jhin.auth-token", "clients.json"), "utf8")) as {
+          clients: { lastSeenAt?: number }[];
+        }
+      ).clients[0]?.lastSeenAt,
+    ).toBe(Date.now());
   });
 
   it("keeps the node starting when clients.json cannot be repaired", async () => {
