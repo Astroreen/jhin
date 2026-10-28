@@ -60,7 +60,7 @@ export function handoffText(input: {
           "",
           "## Review",
           "",
-          `This slice reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}. Record each review with slices_review { sliceId, verdict, notes${on} }: approved or changes-requested, and in notes what you checked and what you found. A commit or merge of the mission is refused until each is approved after its last change.`,
+          `This slice reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}. Record each review with slices_review { sliceId, verdict, notes${on} }: approved or changes-requested, and in notes what you checked and what you found. A commit or merge of the mission is refused until each is approved after its last change. The reviews are not this slice's proof: once they are recorded, prove this slice with slices_prove { sliceId: "${slice.id}", items${on} } (what you checked), or the mission waits on it.`,
         ]),
     "",
   ].join("\n");
@@ -100,7 +100,7 @@ export function handoffsText(input: {
         ? []
         : [
             "",
-            `It reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}: record each review with slices_review { sliceId: "${slice.id}", verdict, notes${on} }, approved or changes-requested, and in notes what you checked and what you found.`,
+            `It reviews the work of ${slice.reviews.map((id) => `\`${id}\``).join(", ")}: record each review with slices_review { sliceId: "${slice.id}", verdict, notes${on} }, approved or changes-requested, and in notes what you checked and what you found; then prove this slice itself with slices_prove, since the reviews are not its proof.`,
           ]),
     ]),
     "",

@@ -178,6 +178,13 @@ const Next = MissionProgress.extend({
    * wait anyway, and the rest goes on (D1263).
    */
   held: z.boolean(),
+  /**
+   * Working slices whose agent is idle now: its turn ended and nothing of it
+   * runs or waits, so the slice moves only when someone asks (D1575). An agent
+   * whose status cannot be read is left out. Optional, so the answer of a
+   * mission's node without it still parses.
+   */
+  idle: z.array(z.string()).optional(),
 });
 
 const ThreadView = z
@@ -545,6 +552,47 @@ export default definePlugin({
       return missionProgress(slices, { away: awayOf(slices) });
     };
 
+    /**
+     * The working slices whose agent is idle (D1575), read with `agents.get` as
+     * the node on the agent's node: an owner's slice, or a status that cannot be
+     * read, is not idle.
+     */
+    const idleOf = async (working: readonly string[], invocation: Invocation) => {
+      const statuses = await Promise.all(
+        working.map(async (sliceId) => {
+          const assignee = state.slices[sliceId]?.assignee;
+          const agent = assignee === undefined ? undefined : parseAgentAddress(assignee);
+          if (agent === undefined) return undefined;
+          try {
+            const { status } =
+              agent.nodeId === nodeId
+                ? await run<{ status: string }>(
+                    "agents.get",
+                    { agentId: agent.agentId },
+                    invocation,
+                  )
+                : await onNode<{ status: string }>(
+                    agent.nodeId,
+                    "agents.get",
+                    { agentId: agent.agentId },
+                    ["agents.read"],
+                    invocation,
+                  );
+            return status;
+          } catch (error) {
+            // Not known: the mission's other signals still hold, and the log says why.
+            context.log.warn("An assignee's status could not be read", {
+              sliceId,
+              assignee,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
+          }
+        }),
+      );
+      return working.filter((_, index) => statuses[index] === "idle");
+    };
+
     // --- Where a mission is (D702) ---------------------------------------------
     register({
       name: "missions.next",
@@ -553,7 +601,7 @@ export default definePlugin({
       input: z.object({ missionId: z.string() }),
       output: Next,
       permissions: ["missions.read"],
-      handler: async ({ missionId }) => {
+      handler: async ({ missionId }, invocation) => {
         await sync();
         const mission = getMission(missionId);
         const progress = progressOf(mission);
@@ -569,6 +617,7 @@ export default definePlugin({
           projectSteps: state.intents[mission.projectId]?.process ?? [],
           ...(await holdOf(mission)),
           ...progress,
+          idle: await idleOf(progress.working, invocation),
         };
       },
     });
