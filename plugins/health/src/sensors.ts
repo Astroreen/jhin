@@ -97,6 +97,10 @@ export class Sensors {
   private meshNodes: readonly StreamMember[] | undefined;
   /** Since when each node away has been away, by node id. */
   private readonly awaySince = new Map<string, string>();
+  /** Nodes whose since was read back after a restart and the mesh has not listed yet (D1570). */
+  private readonly restored = new Set<string>();
+  /** Hears `awaySince` whenever it changes, to keep it across a restart (D1570). */
+  onAwaySince: ((since: Readonly<Record<string, string>>) => void) | undefined;
   private signals: Signal[] = [];
   private readonly groups = new Map<string, HealthGroup>([["node", { kind: "node" }]]);
   /** Proofs recorded on a slice already done, by slice id (D726). */
@@ -187,16 +191,42 @@ export class Sensors {
     return threads;
   }
 
+  /**
+   * Takes back the since of the nodes that were away when this node last
+   * ran (D1570). It holds until the mesh lists the node: reachable, the node
+   * came back meanwhile and the since is dropped; away, it was away all along.
+   */
+  restoreAwaySince(kept: Readonly<Record<string, string>>): void {
+    for (const [node, since] of Object.entries(kept)) {
+      if (this.awaySince.has(node)) continue;
+      this.awaySince.set(node, since);
+      this.restored.add(node);
+    }
+  }
+
   /** The members now, and when they were read: a node away since then (D1548). */
   setMembers(members: readonly StreamMember[] | undefined, at: string): void {
     this.meshNodes = members;
+    let changed = false;
     for (const node of new Set([
       ...this.awaySince.keys(),
       ...(members ?? []).map((m) => m.nodeId),
     ])) {
-      if (!isAway(members, node)) this.awaySince.delete(node);
-      else if (!this.awaySince.has(node)) this.awaySince.set(node, at);
+      const listed = members?.some((member) => member.nodeId === node) === true;
+      if (isAway(members, node)) {
+        this.restored.delete(node);
+        if (!this.awaySince.has(node)) {
+          this.awaySince.set(node, at);
+          changed = true;
+        }
+      } else if (this.restored.has(node) && !listed) {
+        // Not known yet after a restart: neither back nor away.
+      } else {
+        this.restored.delete(node);
+        changed = this.awaySince.delete(node) || changed;
+      }
     }
+    if (changed) this.onAwaySince?.(Object.fromEntries(this.awaySince));
   }
 
   /** Open slices waiting on an assignee of an away node, by `away:<mission>:<node>`. */
