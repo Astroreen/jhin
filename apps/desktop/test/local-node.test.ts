@@ -63,7 +63,17 @@ describe("startLocalNode (D512)", () => {
     );
   });
 
-  it("kills a node that ignores SIGTERM, and tells nobody it stopped", async () => {
+  it("asks the node to stop through its channel, which works on Windows too (D1688)", async () => {
+    process.env["FAKE_CLI"] = "ready";
+    const node = await startLocalNode(PATHS, home());
+    const exits: string[] = [];
+    node.onExit((output) => exits.push(output));
+    await node.stop();
+    expect(Fs.readFileSync(Path.join(node.home, "stopped"), "utf8")).toBe("stopped by message\n");
+    expect(exits).toEqual([]);
+  });
+
+  it("kills a node that ignores its stop, and tells nobody it stopped", async () => {
     process.env["FAKE_CLI"] = "stuck";
     // The grace period ends at once: SIGKILL follows SIGTERM.
     const node = await startLocalNode(PATHS, home(), (kill) => {

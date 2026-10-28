@@ -4,6 +4,7 @@ import * as Module from "node:module";
 import * as Path from "node:path";
 
 import { resolveHome, startNodeHost, type NodeHost } from "@jhin/node-host";
+import { SERVE_READY, SERVE_STOP, type ServeReady } from "@jhin/node-host/running";
 import { createMcpServer } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -197,18 +198,20 @@ async function withTarget<T>(
   }
 }
 
-/** "rpc: ws://…/rpc" when the node serves RPC, else nothing. */
-async function rpcEndpoint(host: NodeHost): Promise<string> {
-  if (!host.kernel.commands.list().some((command) => command.name === "http.info")) return "";
+/** The RPC endpoint (`ws://…/rpc`) when the node serves RPC. */
+async function rpcEndpoint(host: NodeHost): Promise<string | undefined> {
+  if (!host.kernel.commands.list().some((command) => command.name === "http.info"))
+    return undefined;
   const { url } = (await host.kernel.commands.execute("http.info", {})) as { url: string };
-  return `rpc: ${rpcUrl(url)}\n`;
+  return rpcUrl(url);
 }
 
-/** "ui: http://…/" when this node serves the web client, else nothing. */
-async function uiEndpoint(host: NodeHost): Promise<string> {
-  if (!host.kernel.commands.list().some((command) => command.name === "web-ui.info")) return "";
+/** The web client's address (`http://…/`) when this node serves it. */
+async function uiEndpoint(host: NodeHost): Promise<string | undefined> {
+  if (!host.kernel.commands.list().some((command) => command.name === "web-ui.info"))
+    return undefined;
   const { url } = (await host.kernel.commands.execute("web-ui.info", {})) as { url: string };
-  return `ui: ${url}\n`;
+  return url;
 }
 
 /**
@@ -387,20 +390,48 @@ async function main(argv: readonly string[]): Promise<number> {
     const problems = snapshot.plugins.filter(
       (plugin) => plugin.status === "failed" || plugin.status === "blocked",
     );
+    const rpc = await rpcEndpoint(host);
+    const ui = await uiEndpoint(host);
     process.stderr.write(
       `jhin node ${host.nodeId} running: ${active} plugins active, ${problems.length} with problems\n` +
         problems
           .map((plugin) => `  ${plugin.status} ${plugin.id}: ${plugin.error?.message ?? ""}\n`)
           .join("") +
-        (await rpcEndpoint(host)) +
-        (await uiEndpoint(host)) +
+        (rpc === undefined ? "" : `rpc: ${rpc}\n`) +
+        (ui === undefined ? "" : `ui: ${ui}\n`) +
         `logs: ${host.log.file}\n`,
     );
-    await new Promise<void>((resolve) => {
+    const stopped = new Promise<void>((resolve) => {
       process.once("SIGINT", resolve);
       process.once("SIGTERM", resolve);
+      // A parent with an IPC channel (the desktop app) stops the node by a message, which
+      // Windows has no signal for, and by going away (D1688).
+      if (process.send !== undefined) {
+        process.on("message", (message) => {
+          if ((message as { type?: unknown } | null)?.type === SERVE_STOP) resolve();
+        });
+        process.once("disconnect", resolve);
+      }
     });
+    if (process.send !== undefined && process.connected) {
+      const ready: ServeReady = {
+        type: SERVE_READY,
+        nodeId: host.nodeId,
+        ...(rpc === undefined ? {} : { rpc }),
+        ...(ui === undefined ? {} : { ui }),
+        logs: host.log.file,
+        problems: problems.map((plugin) => ({
+          id: plugin.id,
+          status: plugin.status,
+          message: plugin.error?.message ?? "",
+        })),
+      };
+      process.send(ready);
+    }
+    await stopped;
     await host.stop();
+    // The channel would keep this process alive after the node stopped.
+    if (process.connected) process.disconnect();
     return 0;
   }
 

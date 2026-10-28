@@ -764,17 +764,33 @@ environment is the owner's choice and nothing here needs it either).
   thread the repository's watchers are told of. GitHub still disables a
   schedule after 60 days without activity in the repository; such a
   repository has nothing new for the dry run to prove.
+- **D1687. `jhin serve` says it is ready over a Node IPC channel.** When
+  its parent spawned it with one (`stdio` with `"ipc"`), `jhin serve` sends
+  one message once every plugin is active, where it prints its lines:
+  `{ type: "jhin.serve.ready", nodeId, rpc?, ui?, logs, problems }`, the
+  values of its `rpc:`, `ui:` and `logs:` lines and its failed or blocked
+  plugins (`{ id, status, message }`). The type and the message names are
+  `@jhin/node-host/running`'s (`ServeReady`, `SERVE_READY`, `SERVE_STOP`).
+  The lines stay, for people. The app spawns the node with the channel and
+  waits for the message instead of reading the lines: no `ui` is still the
+  error that shows the node's problems (and D1487 still reads the taken
+  port from them), and the token is still read from the home. A parent
+  that is not Node keeps the lines.
+- **D1688. The node stops gracefully on every system through the same
+  channel.** `{ type: "jhin.serve.stop" }` stops `jhin serve` as SIGTERM
+  does (its plugins dispose, then it exits 0), and so does the channel
+  closing, when the parent went away. The app stops its node with the
+  message instead of SIGTERM, which on Windows kills at once, and still
+  kills it after D522's 5 s grace; without a channel it falls back to
+  SIGTERM. Proven on Linux by a test that spawns the real CLI and one with
+  the app's fake CLI; Windows takes the same path, since Node's IPC
+  channel is the same there.
 
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
   commands of the app's page (D520), as every client command is today, so
   only the palette, keybindings and client plugins reach them.
-- A machine-readable ready signal from `jhin serve` (the app reads the CLI's
-  `ui:` and `logs:` lines and the token file the CLI itself reads for
-  `--url`).
-- A graceful stop of the node on Windows: `SIGTERM` is an immediate kill
-  there, so D522's "stops the node first" waits for no shutdown work.
 - The Intel-on-Apple-Silicon warning, the record of an install that did not
   apply, and telling a .deb install apart (D519 treats Linux outside an
   AppImage as not updatable).

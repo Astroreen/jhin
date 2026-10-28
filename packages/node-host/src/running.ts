@@ -93,3 +93,24 @@ export async function findRunningNode(homeRoot: string): Promise<RuntimeState | 
   const probed = await probeNode(localUrl(state.url));
   return probed.kind === "node" && probed.instance === state.instance ? state : undefined;
 }
+
+/**
+ * What `jhin serve` sends a parent that spawned it with a Node IPC channel once every plugin
+ * is active (desktop.md D1687): the values of its `rpc:`, `ui:` and `logs:` lines, and the
+ * plugins that failed or are blocked.
+ */
+export interface ServeReady {
+  readonly type: typeof SERVE_READY;
+  readonly nodeId: string;
+  /** The RPC endpoint, when `jhin.http` listens. */
+  readonly rpc?: string;
+  /** The web client's address, when the node serves it (`--ui`). */
+  readonly ui?: string;
+  readonly logs: string;
+  readonly problems: readonly { id: string; status: string; message: string }[];
+}
+
+export const SERVE_READY = "jhin.serve.ready";
+
+/** What the parent sends `jhin serve` to stop it as SIGTERM does, on every system (D1688). */
+export const SERVE_STOP = "jhin.serve.stop";
