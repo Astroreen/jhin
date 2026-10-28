@@ -2639,9 +2639,9 @@ steer a Claude Code turn ended before it took go with them.
   `run-attempt` with `reason: "steering_restart"`, the old attempt
   `superseded`). The turn a restart's message starts names the stopped
   turn (`restartOf` on `agent.turn.started`, additive), and the stopped
-  turn's end says it was superseded (`reason: "superseded"` on
-  `agent.turn.interrupted`); the thread's queue is not held by it, as
-  before.
+  turn's end says it was superseded (`superseded: true` on
+  `agent.turn.interrupted`, beside the `reason` text it may have); the
+  thread's queue is not held by it, as before.
 - **D1654. A superseded attempt folds,** T3's
   `deriveSupersededAttemptFolds` and `AttemptFoldTimelineRow`. In the
   timeline the stopped turn's work and answer fold into one collapsed row,
@@ -2763,8 +2763,11 @@ steer a Claude Code turn ended before it took go with them.
   the turns that changed would keep a long streaming thread cheap. And white
   space counts as one space everywhere but `<pre>`, also in text shown with
   `white-space: pre-wrap` (reading the computed style would match it).
-- T3's restart as a new attempt of the same run (D803): here the stopped
-  turn and the restarted one are two turns in the timeline.
+- T3's restart as a new attempt (D1653, D1654) beyond the fold: T3 also
+  restarts for a model or provider switched mid-turn (`forceRestart`), and
+  its run keeps the attempts' ordinals; here each attempt is still a turn
+  of its own in the thread's record (`lastTurn`, the sidebar's status), and
+  a restart's stopped turn from before D1653 shows as a stop.
 - Steering a Claude Code that does not mark its frames (an older CLI): its
   first result after a steer ends the turn, so a steer it took only after
   answering loses its answer. And one that sends no idle reports: a result

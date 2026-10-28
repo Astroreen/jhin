@@ -166,6 +166,8 @@ export interface TimelineTurn {
   readonly startedAt: string;
   readonly endedAt?: string;
   readonly state: TurnState;
+  /** Stopped by a restart: a superseded attempt of the run its next turn goes on with (D1653). */
+  readonly superseded?: boolean;
   readonly error?: string;
   /** Why it failed, when the agent classed it: a usage limit (providers.md D1143). */
   readonly failure?: AgentTurnFailure;
@@ -209,6 +211,7 @@ interface Payload {
   readonly failure?: AgentTurnFailure;
   readonly goal?: AgentGoal | null;
   readonly reason?: string;
+  readonly superseded?: boolean;
   readonly status?: string;
   readonly output?: string;
   readonly app?: AgentMcpApp;
@@ -541,6 +544,7 @@ export function createTimeline() {
           turn.state = "interrupted";
           turn.endedAt = at;
           if (payload.reason !== undefined) turn.error = payload.reason;
+          if (payload.superseded === true) turn.superseded = true;
           changed.add(turn);
           break;
         case ThreadEvents.turnFailed:
