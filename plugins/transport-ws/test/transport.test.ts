@@ -1041,6 +1041,70 @@ describe("pairing (security.md D419–D422)", () => {
     expect(await ids()).not.toContain(fromOwner.id);
   });
 
+  it("revokes what a device issued with that device, and never lets it outlive it (security.md D1703)", async () => {
+    const node = await startNode();
+    const device = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "laptop",
+      permissions: ["auth.*", "app.*"],
+      ttlDays: 2,
+    })) as { id: string; token: string; expiresAt: number };
+    const issue = (caller: string, label: string) =>
+      node.kernel.commands.execute(
+        "auth.tokens.issue",
+        { label, permissions: ["app.read"], ttlDays: null },
+        { caller: { id: caller, permissions: ["auth.*", "app.*"] } },
+      ) as Promise<{ id: string; token: string; expiresAt?: number }>;
+    // Over the device's own connection, and through a page session it opened.
+    const direct = await connect(node.url, device.token).call<{ id: string; expiresAt?: number }>(
+      "auth.tokens.issue",
+      { label: "script", permissions: ["app.read"], ttlDays: null },
+    );
+    const session = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: device.token })
+    ).json()) as { id: string };
+    const viaSession = await issue(`client:${session.id}`, "approved in a page");
+    const ownerSession = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: node.token })
+    ).json()) as { id: string };
+    const fromOwner = await issue(`client:${ownerSession.id}`, "the owner's");
+    const fromAgent = await issue("jhin.agent-claude:thread-1", "an agent's");
+    const listed = async () =>
+      new Map(
+        (
+          (await node.kernel.commands.execute("auth.clients.list", {})) as {
+            clients: { id: string; parent?: string; expiresAt?: number }[];
+          }
+        ).clients.map((client) => [client.id, client]),
+      );
+
+    const before = await listed();
+    for (const child of [direct, viaSession]) {
+      expect(before.get(child.id)).toMatchObject({
+        parent: `client:${device.id}`,
+        expiresAt: device.expiresAt,
+      });
+    }
+    for (const unbound of [fromOwner, fromAgent]) {
+      expect(before.get(unbound.id)?.parent).toBeUndefined();
+      expect(before.get(unbound.id)?.expiresAt).toBeUndefined();
+    }
+
+    // Signing the page out ends the session alone; revoking the device ends what it issued.
+    await node.kernel.commands.execute("auth.clients.revoke", { id: session.id });
+    expect([...(await listed()).keys()]).toEqual(
+      expect.arrayContaining([device.id, direct.id, viaSession.id]),
+    );
+    const { revoked } = (await node.kernel.commands.execute("auth.clients.revoke", {
+      id: device.id,
+    })) as { revoked: string[] };
+    expect(revoked.toSorted()).toEqual([device.id, direct.id, viaSession.id].toSorted());
+    const after = await listed();
+    expect(after.has(fromOwner.id) && after.has(fromAgent.id)).toBe(true);
+    // The owner token's rotation leaves issued tokens alone (D412).
+    await node.kernel.commands.execute("auth.token.rotate", {});
+    expect((await listed()).has(fromOwner.id)).toBe(true);
+  });
+
   it("turns the owner's token from #token= into a session too", async () => {
     const node = await startNode();
     const opened = await post(`${httpUrl(node)}/auth/session`, { credential: node.token });

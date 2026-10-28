@@ -1098,6 +1098,82 @@ follow the standards they name.
   how often they refresh; an older spent token presented again is refused
   as an unknown one, without ending the sign-in.
 
+### Leftovers of the hardening, round 6 (W48)
+
+Round 6 of `t3-roadmap.md` (D1701–D1720). T3 at D53 has no token a device
+issues, no drafts kept on the server, no refresh tokens and no secrets in
+config files, so these extend the decisions they name.
+
+- **D1701. What W48 closes, against whom.** D1361's and D1515's lists
+  stand; these are the gaps their Deferred lists left, ordered by what an
+  attacker gains: (1) _An agent reading what the owner typed_: every
+  thread's agent and every MCP client holds `threads.read`
+  (`AGENT_PERMISSIONS`), which read every draft of every thread and
+  project (config-ui.md D486): text the owner has not sent, a pasted key
+  or a note to self; `threads.write` overwrote one (config-ui.md D1704).
+  (2) _What a device issues outlives it_: a token `auth.tokens.issue`
+  gives a device's caller stays when the device is revoked, so a script
+  running in a bound device's page (what D1366 does not defend) or a
+  stolen page session makes a bearer token that works after the page
+  closes, until someone finds that token too (D1703). (3) _Shell access
+  granted unknowingly_ through `workflows.run` (D1702). (4) _A refresh
+  whose answer is lost_ (a dropped connection, an on-path attacker who
+  drops it) leaves the MCP client a spent token whose retry ends the
+  sign-in (D1705). (5) _Secrets that are refused or outlive their use_: a
+  real value that reads as a marker (D1706), a webhook's signing secret
+  the store could not delete (orchestration.md D1707). Not defended, as in
+  D1181: whoever controls the node's machine or the owner's account on it.
+- **D1702. `workflows.run` is shell access.** A workflow script runs
+  code on the node as its user (orchestration.md D375), so
+  `jhin.orchestration` describes `workflows.run` with `shellAccess` and
+  the reason "a script runs code on this machine as the node's user"
+  (D1517): the pairing dialog, the approval page and `jhin pair` name it
+  where it is granted. Nothing is granted or refused differently:
+  `AGENT_PERMISSIONS` never had it.
+- **D1703. What a device issues ends with it.** A token
+  `auth.tokens.issue` issues to a caller that stands on a device token of
+  this node records that token as its `parent`: the caller's own token, or
+  the first of its parents that has none (a page session's device, D421),
+  as D1519 finds an approver. Revoking that token revokes what it issued
+  (D421's cascade), and the issued token never outlives it: an expiry
+  asked past that token's, `ttlDays: null` included, is cut to it. A caller
+  that stands on the owner token (the owner, a page session it opened),
+  and one that is no device token of this node (a thread's agent, a mesh
+  member's caller), issues as before, with no parent, so rotating the
+  owner token still revokes only its page sessions (D412). So a bearer
+  token made through a bound device ends when the owner revokes that
+  device, and an MCP client approved in a device's page session (D1195)
+  is signed out with the device (its refresh ends with its access token,
+  D1519). A bound device may still issue bearer tokens, as `auth.write`
+  says (the web client never does; the CLI and the command palette may).
+  Devices paired by a code keep no parent: a code ends with its creator
+  (D420), but a phone paired from a laptop's page is a device of its own,
+  listed by its name, and revoking the laptop does not unpair it.
+- **D1705. A retry of a lost refresh answer is not a reuse.** A spent
+  refresh token presented again by its client within 60 seconds of its
+  spend, while the refresh token that spend issued has not been used, is a
+  retry of an answer the client did not get: the node revokes the access
+  token that answer carried, forgets the refresh token it carried and
+  answers the retry as a new refresh of the spent token's grant (one more
+  rotation, D1519's checks again). After the 60 seconds, once the token it
+  issued was used, or from another client id, it is a reuse as before and
+  ends the sign-in. Its spend time is kept with the record (`spentAt`,
+  additive; a record without one has no window). The window is Auth0's and
+  Okta's "reuse interval"; RFC 9700 §4.14.2 names none. What a thief gains:
+  a refresh token taken from the wire or the client's storage within 60
+  seconds after its client refreshed, before the client uses the new one,
+  takes the sign-in over (the client's new pair dies, and it signs in
+  again) instead of ending it for both; the sign-in it keeps is listed
+  under Authorized clients and is revoked there.
+- **D1706. A marker is `••••••`, or `••••••#` and a JSON Pointer.**
+  `isRedactedSecret` (`@jhin/host-api`) and `host.config.patch` read a
+  value that starts with `••••••#` as an addressed marker only when a
+  JSON Pointer to a place inside the section follows (`••••••#/keys/1`,
+  RFC 6901, starting with `/`, as the node writes them); `••••••#note`
+  and `••••••#` are values like any other, saved and sealed as the
+  secrets they are. A real value that starts with `••••••#/` still reads as a
+  marker (Deferred).
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -1229,6 +1305,17 @@ A slice a PR, in the order of D1361's risks:
   saved number and boolean secret leave the file as references and read
   back with their types.
 
+### PR 7 — Leftovers of the hardening, round 6 (W48)
+
+A slice a PR, in the order of D1701's risks:
+
+- **PR 7a — what a device issues, and `workflows.run`** (D1701–D1703).
+  **Done when:** a token issued over a device's connection or through a
+  page session it opened lists that device as its parent with no later
+  expiry, revoking the device revokes it while signing the page out does
+  not, the owner's and an agent's issued tokens keep no parent, and
+  `workflows.run` is described with shell access and its reason.
+
 ## Deferred
 
 - A secret whose real value starts with the marker and `#`
@@ -1299,8 +1386,11 @@ A slice a PR, in the order of D1361's risks:
   thread, teams, mission handoffs, workflows): those run in the target
   thread's own mode, as the owner set it.
 - A bound device holding `auth.write` can still issue bearer tokens
-  (`auth.tokens.issue`) through a ticket's connection: D1361 (5) is closed
-  for the bound token itself, not for what its grants let it make.
+  (`auth.tokens.issue`) through a ticket's connection, and create pairing
+  codes a device pairs by without a proof: D1361 (5) is closed for the
+  bound token itself, not for what its grants let it make. Since D1703 an
+  issued token ends with the device and never outlives it; a device paired
+  by its code does not.
 - The web client's DPoP fallbacks for a page without WebCrypto and for
   a same-origin older node's bearer answer have no test of their own
   (`pair-dpop.test.ts` covers an older node's refused preflight;
@@ -1341,10 +1431,7 @@ A slice a PR, in the order of D1361's risks:
   `clients.json` is; a failed write answers the request with an error
   rather than `invalid_grant`. An unreadable `refresh.json` is not
   repaired: every MCP client signs in again.
-- W44's leftovers (D1515–D1519): `workflows.run` runs code on the node as
-  its user, but is not described with `shellAccess` (D1517 names
-  `threads.write`, `git.write` and `editor.open` only). `jhin pair
-  --tailscale` does not warn when `jhin.http.tailnet` names another tailnet
+- W44's leftovers (D1515–D1519): `jhin pair --tailscale` does not warn when `jhin.http.tailnet` names another tailnet
   than the one it publishes on, so its link answers 403. The repair of a
   `clients.json` that is not JSON scans from every unclosed `{` to the end,
   quadratic on a hostile file (D1518). A refresh whose answer is lost
