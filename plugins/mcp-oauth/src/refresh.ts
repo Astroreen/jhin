@@ -12,7 +12,7 @@ const REFRESH_TTL_MS = 90 * 86_400_000;
 /** Spent tokens a sign-in keeps to tell a reuse; an older one is refused as unknown. */
 const MAX_SPENT_PER_SIGN_IN = 20;
 /** How long after its spend a token may be presented again for a lost answer (D1705). */
-export const RETRY_WINDOW_MS = 60_000;
+const RETRY_WINDOW_MS = 60_000;
 
 const RefreshRecord = z.object({
   /** SHA-256 of the token, base64url; the token itself is never kept. */
