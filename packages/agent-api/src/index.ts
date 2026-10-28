@@ -98,7 +98,7 @@ export interface TurnRequest {
    * themselves (Claude Code's `~/.claude`: `CLAUDE.md`, memory, skills, plugins,
    * hooks), so a defined agent works from its project and its instructions only
    * (D1561). Absent loads them, as before; a runtime that cannot leave them out
-   * still runs the turn.
+   * still runs the turn and loads them (Codex and OpenCode, for now).
    */
   readonly userSettings?: boolean;
   /**

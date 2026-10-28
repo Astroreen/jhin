@@ -222,6 +222,18 @@ describe("jhin.agent-claude: live sessions", () => {
     });
   });
 
+  it("starts Claude Code again when a turn's userSettings changes (D1561)", async () => {
+    const { turn, calls } = node([answering("one", "two"), answering("three")]);
+    await turn({ userSettings: false });
+    expect(answers(await turn({ userSettings: false }))).toEqual(["two"]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.options.settingSources).toEqual(["project", "local"]);
+    // The setting sources are part of the launch key (D99).
+    expect(answers(await turn({ userSettings: true }))).toEqual(["three"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.options).not.toHaveProperty("settingSources");
+  });
+
   it("passes only the node's variables the allow-list names (D346)", async () => {
     process.env["JHIN_TEST_NODE_ONLY"] = "secret";
     process.env["JHIN_TEST_LC_ONE"] = "one";

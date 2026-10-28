@@ -112,7 +112,7 @@ export const AgentDefinition = z.object({
   userSettings: z.boolean().optional().meta({
     title: "Load the node user's own settings",
     description:
-      "Whether its runtime also loads what the node machine's user keeps for themselves (Claude Code's ~/.claude: CLAUDE.md, memory, skills, plugins, hooks). Off when unset, so a team does not take on its owner's personal instructions (D1561).",
+      "Whether its runtime also loads what the node machine's user keeps for themselves (Claude Code's ~/.claude: CLAUDE.md, memory, skills, plugins, hooks). Off when unset, so a team does not take on its owner's personal instructions (D1561). Claude Code only for now: Codex and OpenCode load their own settings either way.",
   }),
   project: z.string().min(1).optional().meta({
     title: "Home project",
