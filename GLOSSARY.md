@@ -95,6 +95,12 @@ Words about Jhin:
   contributes the control a config field asks for with `.meta({ control })`.
 - **List of groups** — how the settings form shows an array of objects:
   each item a group of its fields, moved, removed and added as a whole.
+- **Outline** — the entries an open settings page lists under its item in
+  the settings navigation and in its "Jump to section" menu
+  (`setOutline`, ids `<section>/<name>`); the node config page's are its
+  config sections.
+- **Anchor** — the route's place inside a settings section (`a=` in the
+  URL fragment, `Route.anchor`), e.g. the config section in view.
 - **Node** — one running Jhin server, identified by a stable `nodeId` and an
   Ed25519 key pair. T3 Code calls this an environment.
 - **Machine kind** — what a node runs on (`laptop`, `desktop`, `server`,

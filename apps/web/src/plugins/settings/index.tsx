@@ -299,6 +299,8 @@ export const settingsPlugin = builtin(
         const anchorOf = (id: string) => id.slice((current?.id.length ?? 0) + 1);
         /** The outline whose anchor was selected already: once per outline (D1629). */
         const anchored = useRef<string | undefined>(undefined);
+        /** The anchor this shell wrote last: any other one was changed from outside, and is followed. */
+        const written = useRef<string | undefined>(undefined);
         const entries = outline?.entries ?? [];
         const anchorEntry = entries.find((entry) => anchorOf(entry.id) === route.anchor)?.id;
         useEffect(() => {
@@ -309,7 +311,15 @@ export const settingsPlugin = builtin(
           if (anchored.current !== current.id) {
             if (entries.length === 0) return;
             anchored.current = current.id;
+            written.current = route.anchor;
             if (anchorEntry !== undefined) {
+              outline.select(anchorEntry);
+              return;
+            }
+          } else if (route.anchor !== written.current) {
+            // A link or a hand-edited URL names another entry: the page goes there.
+            written.current = route.anchor;
+            if (anchorEntry !== undefined && anchorEntry !== outline.current) {
               outline.select(anchorEntry);
               return;
             }
@@ -317,6 +327,7 @@ export const settingsPlugin = builtin(
           // The route names the entry in view, without a history entry of its own (D1628).
           const anchor = outline.current === undefined ? undefined : anchorOf(outline.current);
           if (anchor === route.anchor) return;
+          written.current = anchor;
           const { anchor: _anchor, ...rest } = navigation.current();
           navigation.navigate(anchor === undefined ? rest : { ...rest, anchor }, {
             replace: true,
@@ -324,6 +335,7 @@ export const settingsPlugin = builtin(
         }, [route.panel, outline, current?.id, entries.length, anchorEntry, route.anchor]);
         if (route.panel !== "settings") return null;
         const jump = (id: string) => {
+          written.current = anchorOf(id);
           outline?.select(id);
           const { anchor: _anchor, ...rest } = navigation.current();
           navigation.navigate({ ...rest, anchor: anchorOf(id) }, { replace: true });

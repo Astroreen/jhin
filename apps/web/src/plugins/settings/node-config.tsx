@@ -28,7 +28,7 @@ import {
   type SettingsPages,
 } from "@jhin/ui";
 import { BracesIcon, ClockIcon, ListIcon, SaveIcon } from "lucide-react";
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 
 import {
   equal,
@@ -598,8 +598,13 @@ function ConfigPage({
       }
       pinned.current = undefined;
     };
+    // A press on the scroll container itself is its scrollbar.
+    const onPointerDown = (event: Event) => {
+      if (event.target === root) unpin(event);
+    };
     const target: HTMLElement | Window = root ?? window;
     target.addEventListener("scroll", onScroll, { passive: true });
+    target.addEventListener("pointerdown", onPointerDown, { passive: true });
     for (const kind of ["wheel", "touchstart", "keydown"]) {
       target.addEventListener(kind, unpin, { passive: true });
     }
@@ -607,6 +612,7 @@ function ConfigPage({
     return () => {
       near.disconnect();
       target.removeEventListener("scroll", onScroll);
+      target.removeEventListener("pointerdown", onPointerDown);
       for (const kind of ["wheel", "touchstart", "keydown"]) {
         target.removeEventListener(kind, unpin);
       }
@@ -784,7 +790,8 @@ function SectionPlaceholder({
   const found = useRef(onFound);
   found.current = onFound;
   const words = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  // Before the first paint, so the words never flash.
+  useLayoutEffect(() => {
     const element = words.current;
     if (element === null) return;
     element.setAttribute("hidden", "until-found");

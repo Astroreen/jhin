@@ -594,6 +594,18 @@ test("D1622–D1626: every section on one page, jumped to from the navigation, e
     page.getByRole("region", { name: "Demo", exact: true }).getByRole("heading", { name: "Demo" }),
   ).toBeInViewport();
 
+  // A link or a hand-edited URL naming another section is followed.
+  await page.evaluate(() => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    params.set("a", "jhin.http");
+    location.hash = params.toString();
+  });
+  await expect(
+    page
+      .getByRole("region", { name: "HTTP server", exact: true })
+      .getByRole("heading", { name: "HTTP server" }),
+  ).toBeInViewport();
+
   // An unsaved edit belongs to its section and survives scrolling away and back (D1626).
   await demo.getByRole("textbox", { name: "Label" }).fill("edited");
   const last = titles[titles.length - 1]!;
@@ -611,6 +623,13 @@ test("D1622–D1626: every section on one page, jumped to from the navigation, e
     .getByRole("button", { name: "Nodes", exact: true })
     .click();
   const leave = page.getByRole("alertdialog", { name: "Discard the changes to Demo?" });
+  await leave.getByRole("button", { name: "Cancel" }).click();
+  await expect(demo.getByRole("textbox", { name: "Label" })).toHaveValue("edited");
+  // The same through Escape and the Back button.
+  await demo.getByRole("heading", { name: "Demo" }).focus();
+  await page.keyboard.press("Escape");
+  await leave.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await leave.getByRole("button", { name: "Cancel" }).click();
   await expect(demo.getByRole("textbox", { name: "Label" })).toHaveValue("edited");
   // So does choosing the other file.
