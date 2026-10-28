@@ -67,6 +67,22 @@ describe("builderConfig", () => {
     expect(config["linux"]).toMatchObject({ target: ["AppImage", "deb"] });
   });
 
+  it("leaves the Claude Agent SDK's native binary out of the app (D1694)", () => {
+    const config = builderConfig({
+      ...base,
+      platform: "mac",
+      version: "0.1.0",
+      repository: undefined,
+    });
+    expect(config["files"]).toEqual(
+      expect.arrayContaining([
+        "node_modules/**",
+        "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+        "!node_modules/**/*.d.{mts,cts}",
+      ]),
+    );
+  });
+
   it("publishes stable releases and nightly prereleases to GitHub", () => {
     const stable = builderConfig({
       ...base,
