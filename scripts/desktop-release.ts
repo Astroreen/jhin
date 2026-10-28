@@ -103,7 +103,16 @@ export function builderConfig(input: BuilderConfigInput): Record<string, unknown
     npmRebuild: false,
     // The node runs as a child of Electron's Node from these files (D512): no asar.
     asar: false,
-    files: ["dist/**", "package.json", "node_modules/**"],
+    files: [
+      "dist/**",
+      "package.json",
+      "node_modules/**",
+      // The Claude Agent SDK's native binary (about 270 MB of the app): the app runs `claude`
+      // from the PATH instead, as T3 does (desktop.md D1694).
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      // Type declarations electron-builder's own rules miss.
+      "!node_modules/**/*.d.{mts,cts}",
+    ],
     // A missing `publish` makes electron-builder guess a GitHub feed from
     // GH_TOKEN; without a repository the build has no feed at all (T3).
     publish:

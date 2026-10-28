@@ -818,6 +818,20 @@ environment is the owner's choice and nothing here needs it either).
   marked regions, 1 drawing". The coordinates stay out of the record: the
   screenshot shows them. A record with no elements is refused by a node
   older than this, which a mesh member may be.
+- **D1694. The desktop app leaves the Claude Agent SDK's native binary out,
+  and runs `claude` from the PATH, as T3 does.** The dry run's Linux app
+  was 408 MB unpacked, 273 MB of it the SDK's platform package
+  (`@anthropic-ai/claude-agent-sdk-<platform>-<arch>`). T3 runs the user's
+  own Claude Code (its `binaryPath` setting defaults to `claude`), so the
+  app's electron-builder `files` exclude those packages (and the `.d.mts`
+  and `.d.cts` declarations its default rules miss). `jhin.agent-claude`
+  then picks its executable in T3's spirit: the configured
+  `jhin.agent-claude.binaryPath`; else the SDK's own binary when it is
+  installed (the CLI's npm install, unchanged), found as the SDK finds it;
+  else `claude` on the PATH (with Windows' `PATHEXT`). With none of them the
+  agent is unavailable with T3's message, "Claude Agent CLI (`claude`) was
+  not found on PATH.". A desktop user without Claude Code installs it, as a
+  T3 user does.
 
 ## Deferred
 
@@ -848,8 +862,11 @@ environment is the owner's choice and nothing here needs it either).
 - A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
   its pure parts are unit tested and the pull request dry run runs it whole
   on all three systems.
-- Trimming the packaged app (about 400 MB unpacked: every agent SDK's
-  binaries) and an asar archive with the node's files unpacked (D942).
+- The rest of the packaged app's size after D1694 (about 135 MB unpacked
+  on Linux): third-party source maps (about 18 MB), and the client's
+  libraries a node install carries (`lucide-react` 35 MB, `@base-ui` 19 MB)
+  that the node may not need at run time; and an asar archive with the
+  node's files unpacked (D942).
 - An attached node with T3's chrome and the rest of `jhin.desktop` (D1486):
   the node would have to load the app's client plugin while it runs, which
   no host command does yet.

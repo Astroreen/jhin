@@ -31,6 +31,7 @@ import {
 
 import { COMPACT_SLASH_COMMAND, discoverSkills, parseInitializationCommands } from "./commands.ts";
 import { claudeConfigDir, deleteSessionFiles } from "./files.ts";
+import { bundledClaude, claudeExecutable, nodeExecutableHost } from "./executable.ts";
 import {
   BUNDLED_DEFAULT_MODEL,
   BUNDLED_MODELS,
@@ -131,7 +132,7 @@ export const Config = z
     binaryPath: z.string().optional().meta({
       title: "Claude Code executable",
       description:
-        "Path to the `claude` executable; the one bundled with the Claude Agent SDK when unset",
+        "Path to the `claude` executable; when unset, the one bundled with the Claude Agent SDK, else `claude` on the PATH",
       advanced: true,
     }),
     defaultModel: z
@@ -229,6 +230,12 @@ async function probe(
   cwd = Os.tmpdir(),
   withUsage = false,
 ): Promise<Probe> {
+  // Neither configured, nor bundled, nor on the PATH (desktop.md D1694): T3's message.
+  if (config.binaryPath === undefined && bundledClaude(nodeExecutableHost) === undefined) {
+    return {
+      status: { available: false, message: "Claude Agent CLI (`claude`) was not found on PATH." },
+    };
+  }
   let release!: () => void;
   const finished = new Promise<void>((resolve) => (release = resolve));
   // Sends nothing: the probe only needs Claude Code's initialization (T3 does the same).
@@ -783,7 +790,12 @@ export function claudePlugin(
             command.permissions.every(readsOnly)
           );
         },
-        config: () => context.config.get<Config>(CONFIG_SECTION),
+        config: () => {
+          const config = context.config.get<Config>(CONFIG_SECTION);
+          // Without the SDK's own binary, `claude` on the PATH (desktop.md D1694).
+          const binaryPath = claudeExecutable(config.binaryPath);
+          return binaryPath === config.binaryPath ? config : { ...config, binaryPath };
+        },
         log: (message, data) => context.log.warn(message, data),
       });
       context.subscriptions.add(registry.register(runtime));
