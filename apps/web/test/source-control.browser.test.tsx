@@ -262,6 +262,30 @@ const viewWith = (
   worktrees: new Map(),
 });
 
+/**
+ * Resolves once `holds` is true, checked again at every change of the DOM `near` lives in
+ * (its document or shadow root): a wait for the change itself, no timer.
+ */
+function whenDom(near: Element, holds: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    if (holds()) {
+      resolve();
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (!holds()) return;
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(near.getRootNode(), {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+  });
+}
+
 describe("a thread card's source control indicators", () => {
   it("shows the branch, the pull request and the diff, in T3's order", () => {
     const { Branch, PullRequestIndicator, DiffCount } = createCardIndicators(
@@ -466,17 +490,19 @@ describe("the diff panel", () => {
     await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
     const added = page.getByText("3", { exact: true });
     await expect.element(added).toBeVisible();
-    // Highlighted by Shiki in a worker: tokens carry their theme colour.
     expect(
       (added.element() as HTMLElement).closest("[data-line-type]")?.getAttribute("data-line-type"),
     ).toBe("change-addition");
-    expect(
+    // Highlighted by Shiki in a worker, which answers after the plain line shows: its tokens
+    // carry their theme colour once the panel renders the answer.
+    const highlighted = () =>
       [
-        ...((added.element() as HTMLElement)
-          .closest("[data-line]")
+        ...((added.query() as HTMLElement | null)
+          ?.closest("[data-line]")
           ?.querySelectorAll("span[style]") ?? []),
-      ].length,
-    ).toBeGreaterThan(1);
+      ].length > 1;
+    await whenDom(added.element(), highlighted);
+    expect(highlighted()).toBe(true);
     mounted.unmount();
   });
 

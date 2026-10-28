@@ -330,6 +330,8 @@ describe("a row's details, checks and speed actions (D1452, D1453, D1457)", () =
         onLink={undefined}
       />,
     );
+    // The list renders its rows after it mounts: wait for the row's link before reading it.
+    await expect.element(page.getByRole("link")).toBeInTheDocument();
     const anchor = page.getByRole("link").element();
     const data = new DataTransfer();
     anchor.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: data }));
