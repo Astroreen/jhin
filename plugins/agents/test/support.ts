@@ -93,10 +93,10 @@ interface Patches {
   failNext: "node" | "project" | undefined;
 }
 
-function hostConfig(
+export function hostConfig(
   kernel: () => TestKernel,
   layers: Record<string, Record<string, unknown>>,
-  patches: Patches,
+  patches: Patches = { failNext: undefined },
 ) {
   return {
     manifest: testManifest("test.host-config", { side: "server" }),

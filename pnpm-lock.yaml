@@ -1349,6 +1349,9 @@ importers:
       '@jhin/plugin-orchestration':
         specifier: workspace:*
         version: link:../orchestration
+      '@jhin/plugin-teams':
+        specifier: workspace:*
+        version: link:../teams
       '@jhin/plugin-threads':
         specifier: workspace:*
         version: link:../threads

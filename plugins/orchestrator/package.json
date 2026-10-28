@@ -45,6 +45,7 @@
     "@jhin/plugin-health": "workspace:*",
     "@jhin/plugin-missions": "workspace:*",
     "@jhin/plugin-orchestration": "workspace:*",
+    "@jhin/plugin-teams": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/testing": "workspace:*",

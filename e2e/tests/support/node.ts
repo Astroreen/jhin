@@ -29,6 +29,8 @@ export interface NodeOptions {
   readonly setup?: (home: string) => void;
   /** Environment variables of the node's process over this one's (a fake `HOME`). */
   readonly env?: NodeJS.ProcessEnv;
+  /** Starts on this home, a stopped node's, instead of a fresh one; its config is written again. */
+  readonly home?: string;
 }
 
 export function writeConfig(home: string, config: Record<string, unknown>): void {
@@ -112,10 +114,10 @@ export function startDevServer(node: string): DevServer {
   };
 }
 
-/** Starts a node in a fresh home on a free port; resolves once it printed its URLs. */
+/** Starts a node in a fresh home (or `home`) on a free port; resolves once it printed its URLs. */
 export async function startNode(options: NodeOptions = {}): Promise<RunningNode> {
   const mode = options.mode ?? "ui";
-  const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-e2e-"));
+  const home = options.home ?? Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-e2e-"));
   writeConfig(home, options.config ?? {});
   options.setup?.(home);
   const args = [
