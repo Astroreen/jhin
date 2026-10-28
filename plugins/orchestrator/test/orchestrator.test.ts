@@ -861,6 +861,12 @@ describe("a wave nobody works on (D1575)", () => {
     const roof = await slice({ title: "Roof", assignee: OWNER });
     const workflows = watch(client, "orchestration");
     // The fake builder answers its handoff and ends its turn without a proof.
+    const { handoffs } = await client.call<{ handoffs: { threadId?: string }[] }>(
+      "slices.handoff.together",
+      { sliceIds: [walls.id, roof.id] },
+    );
+    await watch(client, threadStream(handoffs[0]!.threadId!)).until(ThreadEvents.turnCompleted);
+    // Its one wait ends with nothing moved, and the builder is idle: the lead is woken.
     const run = await client.call<{ workflowId: string }>("missions.orchestrate", {
       missionId: mission.id,
       parentThreadId: lead.id,
