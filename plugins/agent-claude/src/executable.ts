@@ -48,19 +48,20 @@ export function bundledClaude(host: ExecutableHost): string | undefined {
   return undefined;
 }
 
-/** `claude` on the PATH (with Windows' PATHEXT), as a shell would run it. */
+/**
+ * `claude` on the PATH. On Windows only `claude.exe`: the SDK spawns its executable without a
+ * shell, so an npm `claude.cmd` shim would not start (set `binaryPath` to the `.exe` then).
+ */
 export function claudeOnPath(host: ExecutableHost): string | undefined {
   const windows = host.platform === "win32";
   const path = host.env["PATH"] ?? host.env["Path"] ?? "";
-  const extensions = windows
-    ? (host.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((ext) => ext !== "")
-    : [""];
   for (const dir of path.split(windows ? ";" : ":")) {
     if (dir === "") continue;
-    for (const ext of extensions) {
-      const candidate = (windows ? Path.win32 : Path.posix).join(dir, `claude${ext}`);
-      if (host.isFile(candidate)) return candidate;
-    }
+    const candidate = (windows ? Path.win32 : Path.posix).join(
+      dir,
+      windows ? "claude.exe" : "claude",
+    );
+    if (host.isFile(candidate)) return candidate;
   }
   return undefined;
 }

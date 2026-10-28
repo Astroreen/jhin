@@ -230,7 +230,8 @@ async function probe(
   cwd = Os.tmpdir(),
   withUsage = false,
 ): Promise<Probe> {
-  // Neither configured, nor bundled, nor on the PATH (desktop.md D1694): T3's message.
+  // `config` comes resolved (the plugin's `config()` puts `claude` from the PATH in): no
+  // executable configured or found there, and no bundled one either (desktop.md D1694).
   if (config.binaryPath === undefined && bundledClaude(nodeExecutableHost) === undefined) {
     return {
       status: { available: false, message: "Claude Agent CLI (`claude`) was not found on PATH." },

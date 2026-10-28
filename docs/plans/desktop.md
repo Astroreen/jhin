@@ -828,7 +828,7 @@ environment is the owner's choice and nothing here needs it either).
   then picks its executable in T3's spirit: the configured
   `jhin.agent-claude.binaryPath`; else the SDK's own binary when it is
   installed (the CLI's npm install, unchanged), found as the SDK finds it;
-  else `claude` on the PATH (with Windows' `PATHEXT`). With none of them the
+  else `claude` on the PATH (on Windows `claude.exe` only: the SDK spawns without a shell, so an npm `claude.cmd` shim would not start). With none of them the
   agent is unavailable with T3's message, "Claude Agent CLI (`claude`) was
   not found on PATH.". A desktop user without Claude Code installs it, as a
   T3 user does.

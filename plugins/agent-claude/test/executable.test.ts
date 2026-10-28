@@ -43,19 +43,17 @@ describe("the Claude Code executable (desktop.md D1694)", () => {
     expect(claudeExecutable(undefined, host([], {}))).toBeUndefined();
   });
 
-  it("takes the musl package on Linux, and Windows' extensions on its PATH", () => {
+  it("takes the musl package on Linux, and only Windows' `.exe` on its PATH", () => {
     const musl = "/app/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl/claude";
     expect(
       bundledClaude(host([musl], { "@anthropic-ai/claude-agent-sdk-linux-x64-musl/claude": musl })),
     ).toBe(musl);
-    const windows = host(
-      ["C:\\Users\\me\\bin\\claude.CMD"],
-      {},
-      {
-        platform: "win32",
-        env: { Path: "C:\\Windows;C:\\Users\\me\\bin", PATHEXT: ".EXE;.CMD" },
-      },
+    // Windows: the `.exe` only; the SDK cannot spawn an npm `.cmd` shim without a shell.
+    const windowsHost = (files: readonly string[]) =>
+      host(files, {}, { platform: "win32", env: { Path: "C:\\Windows;C:\\Users\\me\\bin" } });
+    expect(claudeOnPath(windowsHost(["C:\\Users\\me\\bin\\claude.cmd"]))).toBeUndefined();
+    expect(claudeOnPath(windowsHost(["C:\\Users\\me\\bin\\claude.exe"]))).toBe(
+      "C:\\Users\\me\\bin\\claude.exe",
     );
-    expect(claudeOnPath(windows)).toBe("C:\\Users\\me\\bin\\claude.CMD");
   });
 });
