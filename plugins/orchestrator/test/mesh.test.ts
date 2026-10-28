@@ -500,7 +500,7 @@ describe("a node that goes away mid-mission (D1547–D1551)", () => {
       detector: "away",
       subject: `away:${mission.id}:b`,
       group: { kind: "mission", missionId: mission.id },
-      summary: "1 slice of «Doghouse» wait on node b, which is away",
+      summary: "1 slice of «Doghouse» waits on node b, which is away",
     });
     // The inbox says its sender is away, and keeps the item open (D1549).
     const { items } = await a.client.call<{ items: { away?: boolean }[] }>("agents.inbox.list", {});

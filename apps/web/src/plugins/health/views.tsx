@@ -491,7 +491,13 @@ function WarningPage(props: { view: HealthView; node: string; warningId: string 
       </dl>
       <section aria-label="Analysis" className="flex max-w-3xl flex-col gap-1">
         <h2 className="text-sm font-medium">Analysis</h2>
-        {analysis === undefined ? (
+        {analysis === undefined && warning.detector === "away" ? (
+          // Nobody is asked about a node away (D1548, D1564).
+          <p className="text-sm text-muted-foreground">
+            Nobody is asked: no agent of the mesh knows more than you about a machine that went
+            away. Bring the node back, or have the lead reassign its slices.
+          </p>
+        ) : analysis === undefined ? (
           <p className="text-sm text-muted-foreground">Waiting for the analyst…</p>
         ) : analysis.status === "none" ? (
           <p className="text-sm text-muted-foreground">

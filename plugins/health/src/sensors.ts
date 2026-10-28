@@ -97,6 +97,8 @@ export class Sensors {
   private meshNodes: readonly StreamMember[] | undefined;
   /** Since when each node away has been away, by node id. */
   private readonly awaySince = new Map<string, string>();
+  /** The members' names as the mesh lists them (`mesh.nodes`), by node id (D1564). */
+  private nodeNames: ReadonlyMap<string, string> = new Map();
   private signals: Signal[] = [];
   private readonly groups = new Map<string, HealthGroup>([["node", { kind: "node" }]]);
   /** Proofs recorded on a slice already done, by slice id (D726). */
@@ -199,6 +201,11 @@ export class Sensors {
     }
   }
 
+  /** The members' names, so a warning names a node as its owner calls it (D1564). */
+  setNodeNames(names: ReadonlyMap<string, string>): void {
+    this.nodeNames = names;
+  }
+
   /** Open slices waiting on an assignee of an away node, by `away:<mission>:<node>`. */
   private waitingOnAway(): Map<string, { node: string; slices: Slice[] }> {
     const waiting = new Map<string, { node: string; slices: Slice[] }>();
@@ -244,7 +251,7 @@ export class Sensors {
           missionId: first.missionId,
           ...(title === undefined ? {} : { title }),
         },
-        summary: `${slices.length} ${slices.length === 1 ? "slice" : "slices"} of «${title ?? first.missionId}» wait on node ${node}, which is away`,
+        summary: `${slices.length === 1 ? "1 slice" : `${slices.length} slices`} of «${title ?? first.missionId}» ${slices.length === 1 ? "waits" : "wait"} on node ${this.nodeNames.get(node) ?? node}, which is away`,
         measures: { slices: slices.length },
         evidence: [],
       });
