@@ -3120,6 +3120,10 @@ why nothing moved, and took Server down for seven minutes mid-mission.
   one commit of the lead's counted on both Laptop and Server.
 - M3: the inbox's page heads a message from an agent "Question from", as it
   does an ask; the lead's messages to the owner read as questions.
+- M3: a `teams.down { remove }` again after a partial failure (D1572): the
+  members removed the first time answer `removed: false`, so the roster
+  stays though nothing is left to remove; `teams.up` defines the team
+  afresh either way. Found by #355's last review.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
