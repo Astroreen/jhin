@@ -121,7 +121,7 @@ async function mesh() {
   });
   const slice = (fields: Record<string, unknown>) =>
     a.client.call<Slice>("slices.create", { missionId: mission.id, spec: "It stands", ...fields });
-  return { a, b, mission, slice };
+  return { a, b, mission, slice, network };
 }
 
 describe("a slice handed to an agent of another node (D1541–D1543)", () => {
@@ -456,6 +456,56 @@ describe("a lead on another node (D1544, D1545)", () => {
       status: "completed",
       result: { outcome: "slices-done", missionId: mission.id, node: "a" },
     });
+  });
+
+  it("keeps what it recorded of the run, readable while the run's node is away (D1571)", async () => {
+    const { a, b, slice, mission, lead, orchestrate, network } = await leadOnB();
+    const walls = await slice({ title: "Walls", assignee: builderOf("a") });
+    const missionsFeed = watch(a.client, MISSIONS_STREAM);
+    const started = await orchestrate();
+    await becomes(missionsFeed, walls.id, "active");
+    // What a recorded of the run stays readable while b is away (D1571).
+    const recorded = { workflowId: started.workflowId, nodeId: "b", status: "running" };
+    expect(await a.client.call("missions.orchestration", { missionId: mission.id })).toMatchObject({
+      recorded,
+    });
+    network.down(b.node.address);
+    // Asked plainly it fails as it did, so orchestrate starts no second run beside one that may go on.
+    await expect(
+      a.client.call("missions.orchestration", { missionId: mission.id }),
+    ).rejects.toMatchObject({ code: "NODE_UNREACHABLE" });
+    expect(
+      await a.client.call("missions.orchestration", { missionId: mission.id, offline: true }),
+    ).toEqual({ head: expect.any(Number), run: null, recorded });
+    // Orchestrating on the mission's node fails as before, and starts no second run.
+    await expect(
+      a.node.kernel.commands.execute(
+        "missions.orchestrate",
+        { missionId: mission.id, parentThreadId: lead.id },
+        { caller: { id: "owner", permissions: ["*"] } },
+      ),
+    ).rejects.toMatchObject({ code: "NODE_UNREACHABLE" });
+    expect(await a.node.kernel.commands.execute("workflows.list", {})).toEqual([]);
+    // A lead on c asking to orchestrate the mission is refused (a node does not relay for a
+    // member, D416) and starts no second run beside the one on b.
+    const c = await meshNode(network, "c");
+    await c.node.join(a.node);
+    const other = await c.client.call<{ id: string }>("threads.create", {
+      title: "Lead",
+      runtimeMode: "full-access",
+    });
+    await expect(
+      c.node.kernel.commands.execute(
+        "missions.orchestrate",
+        { missionId: mission.id, node: "a" },
+        {
+          threadId: other.id,
+          caller: { id: `jhin.agent-fake:${other.id}`, permissions: AGENT_GRANTS },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "RELAY_REFUSED" });
+    expect(await c.node.kernel.commands.execute("workflows.list", {})).toEqual([]);
+    network.up(b.node.address);
   });
 
   it("stops the run and the agents at work on every node, and the owner hears it", async () => {

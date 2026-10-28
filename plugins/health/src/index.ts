@@ -595,6 +595,30 @@ export default definePlugin({
     let evaluating: Promise<void> = Promise.resolve();
     let scheduled = false;
     let active = true;
+    /**
+     * The runs the mission's node recorded on other nodes (D1571), as
+     * `missions.orchestration` has them, read only while they could matter.
+     */
+    const readRuns = async () => {
+      if (!sensors.needsRuns(health)) return sensors.setRuns(new Map());
+      if (!context.commands.list().some((command) => command.name === "missions.orchestration")) {
+        return;
+      }
+      const runs = new Map<string, { nodeId: string; status: string | undefined }>();
+      for (const [missionId, mission] of Object.entries(sensors.missions.missions)) {
+        // A mission that is over has no run to warn of.
+        if (mission.status === "done" || mission.status === "dropped") continue;
+        const answer = (await context.commands
+          .execute("missions.orchestration", { missionId, offline: true })
+          .catch(() => undefined)) as
+          | { recorded?: { nodeId?: string; status?: string } }
+          | undefined;
+        if (answer?.recorded?.nodeId !== undefined) {
+          runs.set(missionId, { nodeId: answer.recorded.nodeId, status: answer.recorded.status });
+        }
+      }
+      sensors.setRuns(runs);
+    };
     const evaluate = async () => {
       const current = config();
       if (!current.enabled || !active) return;
@@ -619,12 +643,17 @@ export default definePlugin({
           narrowerWarningId: narrower.warningId,
         });
       }
+      await readRuns();
       // A mission waiting on a node away, and the node back (D1548).
-      for (const { warning, reason } of sensors.awayCleared(health)) {
+      for (const { warning, reason } of [
+        ...sensors.awayCleared(health),
+        ...sensors.runAwayCleared(health),
+      ]) {
         await clear(warning.warningId, { reason });
       }
       await keepingAway;
       for (const finding of sensors.awayFindings(health)) await raise(finding, evaluatedAt);
+      for (const finding of sensors.runAwayFindings(health)) await raise(finding, evaluatedAt);
     };
     function evaluateSoon() {
       if (scheduled) return;

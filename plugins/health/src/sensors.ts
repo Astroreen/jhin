@@ -64,6 +64,9 @@ const refOf = (event: StoredEvent, kind?: SignalKind): EventRef => ({
   ...(kind === undefined ? {} : { kind }),
 });
 
+/** The subject of a warning that a mission's run runs on a node away (D1571); not `away:`. */
+const RUN_AWAY = "away-run:";
+
 const OPEN: ReadonlySet<Slice["status"]> = new Set(["planned", "active", "blocked"]);
 
 /**
@@ -95,6 +98,11 @@ export class Sensors {
   missions: MissionsState = EMPTY_MISSIONS;
   /** The other members as `mesh.streams@1.1` lists them (D1548); none away without them. */
   private meshNodes: readonly StreamMember[] | undefined;
+  /**
+   * The runs the mission's node recorded on another node, by mission id (D1571),
+   * given before each evaluation while a node is away or a run warning is open.
+   */
+  private runs = new Map<string, { nodeId: string; status: string | undefined }>();
   /** Since when each node away has been away, by node id. */
   private readonly awaySince = new Map<string, string>();
   /** Nodes whose since was read back after a restart and the mesh has not listed yet (D1570). */
@@ -229,6 +237,83 @@ export class Sensors {
     if (changed) this.onAwaySince?.(Object.fromEntries(this.awaySince));
   }
 
+  /** Whether a node is away, or a warning of a run on one is open: what reading the runs is for (D1571). */
+  needsRuns(health: HealthState): boolean {
+    return (
+      this.awaySince.size > 0 ||
+      Object.values(health.warnings).some(
+        (warning) => warning.status === "open" && warning.subject.startsWith(RUN_AWAY),
+      )
+    );
+  }
+
+  setRuns(runs: ReadonlyMap<string, { nodeId: string; status: string | undefined }>): void {
+    this.runs = new Map(runs);
+  }
+
+  /** Running runs on an away node, by `away-run:<mission>` (D1571). */
+  private runsOnAway(): Map<string, { missionId: string; node: string }> {
+    const found = new Map<string, { missionId: string; node: string }>();
+    for (const [missionId, run] of this.runs) {
+      if (run.status !== "running" || !isAway(this.meshNodes, run.nodeId)) continue;
+      found.set(`${RUN_AWAY}${missionId}`, { missionId, node: run.nodeId });
+    }
+    return found;
+  }
+
+  /**
+   * A mission whose run runs on a node away (D1571): one finding per mission,
+   * unless its warning is open, or was dismissed since the node went away.
+   */
+  runAwayFindings(health: HealthState): Finding[] {
+    const findings: Finding[] = [];
+    for (const [subject, { missionId, node }] of this.runsOnAway()) {
+      const mission = this.missions.missions[missionId];
+      if (mission === undefined) continue;
+      const latest = Object.values(health.warnings)
+        .filter((warning) => warning.detector === "away" && warning.subject === subject)
+        .reduce<Warning | undefined>(
+          (last, warning) =>
+            last === undefined || warning.raisedAt > last.raisedAt ? warning : last,
+          undefined,
+        );
+      if (latest?.status === "open") continue;
+      const since = this.awaySince.get(node) ?? "";
+      if (latest?.status === "dismissed" && (latest.dismissedAt ?? "") >= since) continue;
+      findings.push({
+        detector: "away",
+        subject,
+        group: {
+          kind: "mission",
+          projectId: mission.projectId,
+          missionId,
+          title: mission.title,
+        },
+        summary: `The run of «${mission.title}» runs on node ${node}, which is away; nobody is woken`,
+        measures: {},
+        evidence: [],
+      });
+    }
+    return findings;
+  }
+
+  /** Open run warnings whose run ended, or whose node is back or no longer the run's (D1571). */
+  runAwayCleared(health: HealthState): { warning: Warning; reason: string }[] {
+    const on = this.runsOnAway();
+    return Object.values(health.warnings).flatMap((warning) => {
+      if (warning.status !== "open" || !warning.subject.startsWith(RUN_AWAY)) return [];
+      if (on.has(warning.subject)) return [];
+      const run = this.runs.get(warning.subject.slice(RUN_AWAY.length));
+      const reason =
+        run === undefined || run.status !== "running"
+          ? "run-ended"
+          : this.meshNodes === undefined
+            ? "members-unknown"
+            : "node-back";
+      return [{ warning, reason }];
+    });
+  }
+
   /** Open slices waiting on an assignee of an away node, by `away:<mission>:<node>`. */
   private waitingOnAway(): Map<string, { node: string; slices: Slice[] }> {
     const waiting = new Map<string, { node: string; slices: Slice[] }>();
@@ -287,7 +372,7 @@ export class Sensors {
     const waiting = this.waitingOnAway();
     return Object.values(health.warnings).flatMap((warning) => {
       if (warning.status !== "open" || warning.detector !== "away") return [];
-      if (waiting.has(warning.subject)) return [];
+      if (warning.subject.startsWith(RUN_AWAY) || waiting.has(warning.subject)) return [];
       const node = warning.subject.slice(warning.subject.indexOf(":", "away:".length) + 1);
       // The subject is `away:<mission id, a UUID>:<node>`: the node follows the second colon.
       const listed = this.meshNodes?.some((member) => member.nodeId === node) === true;

@@ -2598,6 +2598,20 @@ Decisions (M3):
   so a later `teams.up` defines the team afresh; the `jhin.teams` spec in
   config stays. It is recorded as `teams.team.down` with `removed: true`.
   The owner chose this over a new `teams.remove` command and over no change.
+- **D1571. Health warns when the node a mission's run runs on is away.**
+  The mission's node keeps the status of a run another node records
+  (`missions.orchestration.record`, D1545), and `missions.orchestration`
+  answers it as `recorded`; asked with `offline`, it does so even when that
+  node cannot be reached, with `run` null, where otherwise it fails as
+  before, so a run is not started twice. Only health asks with `offline`.
+  While a node is away, health reads it for
+  each open mission, and a run that is `running` on an away node gives one
+  warning per mission, detector `away`, subject `away-run:<mission>` (not
+  D1548's `away:<mission>:<node>`): "The run of «mission» runs on node X,
+  which is away; nobody is woken". A dismissal holds until the node goes
+  away again, as D1548's. It clears by itself (D1383) when the run ended
+  (`run-ended`) or its node is back or it is recorded again on a node that
+  is up (`node-back`, `members-unknown` while the members are not known).
 
 ## Deferred
 
@@ -2758,10 +2772,13 @@ Decisions (M3):
   mission's node was down counts as away all along (D1570): the mesh keeps
   no history to tell it by. A node away at a shutdown and never listed again
   keeps its `awaySince` entry.
-- M2: a lead whose own node goes away mid-run. Its run went with it, so
+- ~~M2: a lead whose own node goes away mid-run. Its run went with it, so
   nobody is woken; the mission's node still reads the run from the record
   (D1545), and health warns only of slices waiting on an away node (D1548),
-  not of a lead that is gone.
+  not of a lead that is gone.~~ M3, D1571.
+- M3: recording a run emits no event, so a run warning (D1571) clears at
+  health's next evaluation (any event it hears, or a mesh change), not when
+  the run is recorded.
 - A7: detecting a repeated wrong idea nobody named yet (phrases recurring
   across agents' notes and messages); D727 needs the correction first.
 - A7: an agent naming a corrected idea (`health.write` for an epidemiology
