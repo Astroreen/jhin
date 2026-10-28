@@ -427,7 +427,13 @@ export default definePlugin({
       });
 
     // --- Leaving: a member that moved to another node (D1546) ------------------------
-    const leave = (input: { roster: TeamRoster; member: string; removing?: boolean | undefined }) =>
+    const leave = (input: {
+      roster: TeamRoster;
+      member: string;
+      removing?: boolean | undefined;
+      /** The node's own teams.down decides about its roster (D1572). */
+      keepRoster?: boolean;
+    }) =>
       serial(async () => {
         const { roster, member } = input;
         const agentId = teamAgentId(roster.teamId, member);
@@ -448,8 +454,9 @@ export default definePlugin({
         // Its generations and knowledge stay (D611); its definition goes.
         if (stopped !== undefined) await run("agents.remove", { agentId });
         await kv.delete(NAMESPACE, `seat/${agentId}`);
-        if (input.removing === true) await kv.delete(NAMESPACE, `roster/${roster.teamId}`);
-        else await kv.set(NAMESPACE, `roster/${roster.teamId}`, roster as unknown as Json);
+        if (input.removing === true && input.keepRoster !== true) {
+          await kv.delete(NAMESPACE, `roster/${roster.teamId}`);
+        } else await kv.set(NAMESPACE, `roster/${roster.teamId}`, roster as unknown as Json);
         return { left: true, ...(stopped === undefined ? {} : { stoppedAt: stopped.stoppedAt }) };
       });
 
@@ -647,7 +654,7 @@ export default definePlugin({
               const input = { roster, member, removing: true };
               const left =
                 node === nodeId
-                  ? await leave(input)
+                  ? await leave({ ...input, keepRoster: true })
                   : await remote<{ left: boolean; stoppedAt?: string }>(
                       node,
                       "teams.leave",
