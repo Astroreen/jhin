@@ -274,6 +274,20 @@ rules of the form below), the decision says so.
   never synced itself; with a switch off, the device neither sends nor takes
   that kind of state.
   Visits are thread state on the node (D485) and always shared, as in T3.
+- **D1704. A draft is read and kept with `threads.drafts`** (W48,
+  `security.md` D1701 (1)). A draft is what a person typed and has not
+  sent (a pasted key, a note to self), not thread state, yet D486 guarded
+  it with `threads.read` and `threads.write`, which every thread's agent
+  and MCP client holds (`AGENT_PERMISSIONS`): an agent could read every
+  draft of every thread and project, and overwrite one. `threads.draft.get`,
+  `threads.draft.set` and the stream `threads/drafts` now need
+  `threads.drafts` ("Sync drafts", "Read and keep what was typed and not
+  sent yet, for every device."), as device settings need
+  `host.device-settings` (D487). `AGENT_PERMISSIONS` does not get it; the
+  owner and devices paired with the owner's grants hold it through `*` or
+  `threads.*`. A device whose grants name `threads.read` and
+  `threads.write` only keeps its drafts to itself, as with an older node
+  (its calls are refused and ignored, D486) or with the switch off (D488).
 
 ## Project settings and multi-line text (W42)
 

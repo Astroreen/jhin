@@ -568,4 +568,28 @@ describe("jhin.threads: drafts kept for every device (D486)", () => {
       code: "COMMAND_INPUT_INVALID",
     });
   });
+
+  it("keeps drafts from an agent's grants: they need threads.drafts (D1704)", async () => {
+    const { client, kernel } = await node();
+    await client.call("threads.draft.set", { key: "thread:t1", prompt: "my key is 123", at: 10 });
+    // What every thread's agent holds of threads (`AGENT_PERMISSIONS` of `@jhin/mcp-api`).
+    const agent = ["threads.read", "threads.write"];
+    const as = (permissions: readonly string[]) => ({
+      caller: { id: "jhin.agent-claude:t1", permissions },
+    });
+    await expect(
+      kernel.commands.execute("threads.draft.get", { key: "thread:t1" }, as(agent)),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(
+      kernel.commands.execute(
+        "threads.draft.set",
+        { key: "thread:t1", prompt: "overwritten", at: 20 },
+        as(agent),
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    // `threads.*` and the owner's `*` cover it.
+    expect(
+      await kernel.commands.execute("threads.draft.get", { key: "thread:t1" }, as(["threads.*"])),
+    ).toEqual({ prompt: "my key is 123", at: 10 });
+  });
 });
