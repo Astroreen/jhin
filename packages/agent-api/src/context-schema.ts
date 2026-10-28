@@ -76,23 +76,29 @@ const TerminalRecord = z
   })
   .refine((record) => record.lineEnd >= record.lineStart);
 
-const PreviewAnnotationRecord = z.object({
-  ...Base,
-  kind: z.literal("preview-annotation"),
-  pageUrl: z.string().max(4096),
-  pageTitle: z.string().max(1000),
-  comment: z.string().max(20_000),
-  elements: z
-    .array(
-      z.object({
-        selector: z.string().max(2000),
-        tagName: z.string().max(100),
-        text: z.string().max(2000),
-      }),
-    )
-    .min(1)
-    .max(20),
-});
+const PreviewAnnotationRecord = z
+  .object({
+    ...Base,
+    kind: z.literal("preview-annotation"),
+    pageUrl: z.string().max(4096),
+    pageTitle: z.string().max(1000),
+    comment: z.string().max(20_000),
+    elements: z
+      .array(
+        z.object({
+          selector: z.string().max(2000),
+          tagName: z.string().max(100),
+          text: z.string().max(2000),
+        }),
+      )
+      .max(20),
+    // The regions and strokes of desktop.md D1691, counted.
+    regions: z.number().int().min(0).max(20).optional(),
+    drawings: z.number().int().min(0).max(50).optional(),
+  })
+  .refine((record) => record.elements.length + (record.regions ?? 0) + (record.drawings ?? 0) > 0, {
+    message: "A preview annotation needs an element, a region or a drawing",
+  });
 
 /** A kind this node does not know: kept with its JSON payload, up to 64 000 characters. */
 const UnknownRecord = z.object({

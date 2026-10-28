@@ -99,6 +99,10 @@ export interface PreviewAnnotationContextRecord extends ContextRecordBase {
     readonly tagName: string;
     readonly text: string;
   }[];
+  /** How many regions the user marked (desktop.md D1691); the screenshot shows them. */
+  readonly regions?: number | undefined;
+  /** How many strokes the user drew (D1691). */
+  readonly drawings?: number | undefined;
 }
 
 /** A kind this version does not know, kept with its payload (T3's UnknownContextRecord). */
@@ -321,13 +325,19 @@ function formatPayload(record: KnownContextRecord): string {
     }
     case "preview-annotation": {
       // T3's <preview_annotation>: its page, the comment, and what was picked.
-      const count = record.elements.length;
       const lines = [
         `Id: ${record.contextId}`,
         `Page: ${record.pageTitle === "" ? record.pageUrl : `${record.pageTitle} (${record.pageUrl})`}`,
       ];
       if (record.comment.trim()) lines.push(`Comment: ${record.comment.trim()}`);
-      lines.push(`Targets: ${count} selected ${count === 1 ? "element" : "elements"}`);
+      // T3's previewAnnotationTargetSummary.
+      const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+      const targets = [
+        record.elements.length > 0 ? plural(record.elements.length, "selected element") : "",
+        (record.regions ?? 0) > 0 ? plural(record.regions!, "marked region") : "",
+        (record.drawings ?? 0) > 0 ? plural(record.drawings!, "drawing") : "",
+      ].filter((part) => part !== "");
+      lines.push(`Targets: ${targets.join(", ")}`);
       record.elements.forEach((element, index) => {
         lines.push(`${index + 1}. <${element.tagName}> ${element.selector}`);
         if (element.text.trim()) lines.push(indent(element.text.trim().slice(0, 500)));

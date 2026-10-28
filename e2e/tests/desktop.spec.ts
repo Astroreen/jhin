@@ -787,6 +787,140 @@ test("the app shows its node's browser tabs in a webview the agent and the user 
   }
 });
 
+test("draws on and marks a region of a tab the app hosts, each an annotation with its screenshot (D1690, D1691)", async () => {
+  const info = test.info();
+  const site = Http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(
+      `<!doctype html><title>Draw page</title><style>body{margin:0;height:100vh;background:#fff}</style><h1 style="margin:20px;font:16px sans-serif">Draw here</h1>`,
+    );
+  });
+  await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+  try {
+    const launchedApp = await launch();
+    const { app, window } = launchedApp;
+    const client = nodeClient(launchedApp);
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    await window.locator(`[data-thread-item$="|${thread.id}"]`).click();
+    await client.call("preview.open", { threadId: thread.id, url: `${origin}/` });
+    const panel = window.getByRole("complementary", { name: "Right panel" });
+    await expect(panel.getByRole("tab", { name: "Draw page" })).toBeVisible();
+
+    /**
+     * One annotation in the guest: T3's key picks the tool before any target (the first one
+     * takes the focus to the comment), the pointer draws, then the comment and Enter.
+     */
+    const annotate = async (
+      key: string,
+      points: readonly (readonly [number, number])[],
+      comment: string,
+      shotName?: string,
+    ) => {
+      const overlay = app.evaluate(({ webContents }) => {
+        const guest = webContents.getAllWebContents().find((each) => each.getType() === "webview")!;
+        return guest.executeJavaScript(`new Promise((resolve) => {
+          const found = () => document.querySelector("jhin-annotation") !== null;
+          if (found()) return resolve(true);
+          new MutationObserver((_, observer) => { if (found()) { observer.disconnect(); resolve(true); } })
+            .observe(document.documentElement, { childList: true });
+        })`);
+      });
+      await panel.getByRole("button", { name: "Annotate preview" }).click();
+      expect(await overlay).toBe(true);
+      await app.evaluate(
+        ({ webContents }, input) => {
+          const { key: pressed, points: path } = input;
+          const guest = webContents
+            .getAllWebContents()
+            .find((each) => each.getType() === "webview")!;
+          guest.sendInputEvent({ type: "keyDown", keyCode: pressed.toUpperCase() });
+          guest.sendInputEvent({ type: "char", keyCode: pressed });
+          guest.sendInputEvent({ type: "keyUp", keyCode: pressed.toUpperCase() });
+          const [first, ...rest] = path;
+          const last = path.at(-1)!;
+          guest.sendInputEvent({ type: "mouseMove", x: first![0], y: first![1] });
+          guest.sendInputEvent({
+            type: "mouseDown",
+            x: first![0],
+            y: first![1],
+            button: "left",
+            clickCount: 1,
+          });
+          for (const [x, y] of rest)
+            guest.sendInputEvent({ type: "mouseMove", x, y, button: "left" });
+          guest.sendInputEvent({
+            type: "mouseUp",
+            x: last[0],
+            y: last[1],
+            button: "left",
+            clickCount: 1,
+          });
+        },
+        { key, points },
+      );
+      if (shotName !== undefined) {
+        // The overlay with T3's toolbar, the target and the editor, before it is attached: two
+        // frames of the guest after the input, so it has painted.
+        await app.evaluate(({ webContents }) =>
+          webContents
+            .getAllWebContents()
+            .find((each) => each.getType() === "webview")!
+            .executeJavaScript(
+              "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+            ),
+        );
+        const path = info.outputPath(`${shotName}.png`);
+        await window.screenshot({ path });
+        await info.attach(shotName, { path, contentType: "image/png" });
+      }
+      await app.evaluate(({ webContents }, typed) => {
+        const guest = webContents.getAllWebContents().find((each) => each.getType() === "webview")!;
+        for (const keyCode of typed) guest.sendInputEvent({ type: "char", keyCode });
+        guest.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+      }, comment);
+    };
+
+    const composer = window.getByRole("form", { name: "Composer" });
+    // A stroke with Draw (D), then a region of empty page with Region (R).
+    await annotate(
+      "d",
+      [
+        [260, 140],
+        [300, 180],
+        [340, 150],
+        [380, 200],
+      ],
+      "Circled",
+      "desktop-preview-annotation-draw",
+    );
+    await expect(composer.getByLabel("Preview annotation, Circled")).toBeVisible();
+    await annotate(
+      "r",
+      [
+        [60, 120],
+        [140, 170],
+        [220, 220],
+      ],
+      "Boxed",
+    );
+    await expect(composer.getByLabel("Preview annotation, Boxed")).toBeVisible();
+    await expect(
+      composer.getByRole("img", { name: /^preview-annotation-annotation_.*\.png$/ }),
+    ).toHaveCount(2);
+    const annotated = info.outputPath("desktop-preview-region-draw.png");
+    await window.screenshot({ path: annotated });
+    await info.attach("desktop-preview-region-draw", { path: annotated, contentType: "image/png" });
+    await composer.getByRole("button", { name: "Send message" }).click();
+    const messages = window.getByRole("log", { name: "Messages" });
+    // The agent reads T3's summary of each annotation's targets.
+    await expect(messages.getByText(/Targets: 1 drawing/)).toBeVisible();
+    await expect(messages.getByText(/Targets: 1 marked region/)).toBeVisible();
+  } finally {
+    await new Promise((resolve) => site.close(resolve));
+  }
+});
+
 test("annotates an element of a tab the app hosts into the composer, and pops the tab out (D1491, D1493)", async () => {
   const info = test.info();
   const site = Http.createServer((_request, response) => {

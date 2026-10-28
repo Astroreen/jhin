@@ -785,6 +785,35 @@ environment is the owner's choice and nothing here needs it either).
   SIGTERM. Proven on Linux by a test that spawns the real CLI and one with
   the app's fake CLI; Windows takes the same path, since Node's IPC
   channel is the same there.
+- **D1690. T3's Region, Draw and Erase tools in the annotation overlay.**
+  The overlay of D1491 gets T3's toolbar at the top of the page: "Select"
+  ("Select elements (V)"), "Region" ("Draw a region or marquee-select
+  elements (R)"), "Draw" ("Draw freehand (D)") and "Erase" ("Remove an
+  annotation target (E)"), with T3's keys while the focus is not in the
+  overlay. Region drags a rectangle: the elements whose centres it holds
+  (leaves, buttons and links, the smallest first, T3's 20 at most) are
+  selected, and when it holds none it becomes a marked region. Draw draws
+  a freehand stroke (T3's 4 px line in the overlay's blue, smoothed as
+  T3's `pathFromPoints`); a click without a drag draws nothing. Erase
+  removes the selected element, region or stroke under the pointer. The
+  tools work on pointer events, as T3's. The editor shows as soon as
+  there is any target, and takes the focus the first time, as T3's
+  `updateStatus`; Attach needs at least one target. The screenshot is the
+  area of every target (T3's `unionRects`): element outlines, the editor,
+  the toolbar and the hover outline leave the picture, the regions' boxes
+  and the strokes stay in it, since they are what the user drew. T3's
+  style panel and component source lookup stay Deferred.
+- **D1691. An annotation carries its regions and strokes.**
+  `PreviewAnnotation` (`@jhin/desktop-api`) gets `regions` (`{ id, rect }`,
+  at most 20) and `strokes` (`{ id, color, width, points, bounds }`, at
+  most 50 of at most 2 000 points), both optional, and `elements` may be
+  empty when one of them is not; `desktop.shell@1` goes to 1.4. The
+  composer's `preview-annotation` record gets the counts, `regions` and
+  `drawings` (optional), and its elements may be empty too when one count
+  is not; an agent reads T3's summary, "Targets: 1 selected element, 2
+  marked regions, 1 drawing". The coordinates stay out of the record: the
+  screenshot shows them. A record with no elements is refused by a node
+  older than this, which a mesh member may be.
 
 ## Deferred
 
@@ -830,8 +859,8 @@ environment is the owner's choice and nothing here needs it either).
   T3 does).
 - Telling the app's page from other subscribers of `preview-desktop`
   (D1321): any subscriber holds new tabs for the 10 s wait.
-- Around the preview in the app (D1321–D1324): T3's annotation Region, Draw
-  and Erase tools, its style panel and component source lookup (D1491);
+- Around the preview in the app (D1321–D1324): T3's annotation style panel
+  and component source lookup (D1491, D1690);
   passkeys and favicon capture of a guest; Copy Image of an image inside a
   guest's subframe (T3's `ContextMenuImage.ts`, D1490); a reconnected tab
   keeping its recording, the human's control and the popups it opened
