@@ -756,7 +756,9 @@ the decision range D1481–D1500. The reference stays T3 Code `eb7b35ac`.
 - The `release` environment itself (D1482): its required reviewers, its
   deployment limits and the signing secrets moved into it are repository
   settings, the owner's to make; until then a publishing run creates it
-  unprotected and uses the repository's secrets.
+  unprotected and uses the repository's secrets. The owner declined both
+  (2026-10-28): there are no signing secrets, and a review would put a
+  manual step into a workflow the owner wants automatic.
 - A notice when the weekly dry run fails (D1484): GitHub mails only the
   user who last changed the schedule, and disables a schedule after 60 days
   without activity in the repository.
