@@ -30,13 +30,13 @@ export interface MessageFileChips {
   readonly copyPath?: CopyPath | undefined;
 }
 
-export type OpenInEditor = (
+type OpenInEditor = (
   path: string,
   editor: EditorInfo,
   position: { readonly line?: number; readonly column?: number },
 ) => void;
 
-export type CopyPath = (value: string, title: "Relative path" | "Full path") => void;
+type CopyPath = (value: string, title: "Relative path" | "Full path") => void;
 
 /** An agent's message: its links and inline code that name a project's file are chips (D1431). */
 export interface AgentFileLinks {

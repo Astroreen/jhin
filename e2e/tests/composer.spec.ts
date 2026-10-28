@@ -342,13 +342,13 @@ test("offers commands, skills and files from / $ and @, and inserts what is pick
   await message.press("Escape");
 
   await message.press("Enter");
-  // The agent got the markdown: the file link renders as a link in its echo.
+  // The agent got the markdown: the file link renders as T3's file chip in its echo (D1431).
   const answer = page
     .getByRole("log", { name: "Messages" })
     .getByRole("article", { name: "Agent" });
   await expect(answer).toContainText("Echo: /review");
   await expect(answer).toContainText("$deploy");
-  await expect(answer.getByRole("link", { name: "app.ts" })).toHaveAttribute("href", "src/app.ts");
+  await expect(answer.getByRole("button", { name: "Preview src/app.ts" })).toHaveText("app.ts");
 });
 
 test("shows T3's chips with their details: a file's preview and a skill's instructions", async ({

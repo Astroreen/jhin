@@ -12,7 +12,7 @@ interface FileTreeDragTransfer {
   setData(format: string, data: string): void;
 }
 
-export interface FileTreeDragStartEvent {
+interface FileTreeDragStartEvent {
   readonly dataTransfer: FileTreeDragTransfer | null;
   composedPath(): ReadonlyArray<unknown>;
 }
