@@ -669,10 +669,14 @@ describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
     const back = await webhookTask(first.client, {
       schedule: { type: "webhook", signature: { ...signature, secret: "old" } },
     });
+    const stuck = await webhookTask(first.client, {
+      schedule: { type: "webhook", signature: { ...signature, secret: "stuck" } },
+    });
     const name = (id: string) => `jhin.scheduler/webhook/${id}`;
-    // The store cannot be read while the task goes and the signature is removed.
+    // The store cannot be read while the tasks go and the signature is removed.
     secrets.readable = false;
     await first.client.call("scheduler.tasks.delete", { id: gone.id });
+    await first.client.call("scheduler.tasks.delete", { id: stuck.id });
     await first.client.call("scheduler.tasks.update", {
       id: back.id,
       schedule: { type: "webhook", signature: null },
@@ -686,6 +690,7 @@ describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
     await first.stop();
     expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toEqual([
       gone.id,
+      stuck.id,
       back.id,
     ]);
     expect(secrets.named.get(name(gone.id))).toBe("gone");
@@ -696,15 +701,28 @@ describe("jhin.scheduler: signing secrets in the secret store (D1512)", () => {
     await second.stop();
     expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toEqual([
       gone.id,
+      stuck.id,
       back.id,
     ]);
 
+    // A delete that fails again keeps its id listed; the others are swept.
     secrets.readable = true;
+    const deleteSecret = secrets.deleteSecret;
+    secrets.deleteSecret = (secret: string) => {
+      if (secret === name(stuck.id)) throw new Error("disk full");
+      deleteSecret(secret);
+    };
     const third = await node({ storage: first.storage, http: true, secrets });
     // Stopping waits for the sweep.
     await third.stop();
     expect(secrets.named.has(name(gone.id))).toBe(false);
+    expect(secrets.named.get(name(stuck.id))).toBe("stuck");
     expect(secrets.named.get(name(back.id))).toBe("n3w");
+    expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toEqual([stuck.id]);
+
+    secrets.deleteSecret = deleteSecret;
+    await (await node({ storage: first.storage, http: true, secrets })).stop();
+    expect(secrets.named.has(name(stuck.id))).toBe(false);
     expect(await first.storage.kv.get("jhin.scheduler", "secret-orphans")).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { SECRET_REDACTED } from "@jhin/client-api";
+import { SECRET_REDACTED, isRedactedSecret } from "@jhin/client-api";
 import { z } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -395,5 +395,14 @@ describe("the W16 form hints (D478–D482)", () => {
     expect(renameKey({ a: 1, b: 2 }, "a", "b")).toBeUndefined();
     expect(renameKey({ a: 1 }, "a", "")).toBeUndefined();
     expect(renameKey({ a: 1 }, "a", "a")).toEqual({ a: 1 });
+  });
+});
+
+describe("the secret marker the form keeps (security.md D1706)", () => {
+  it("is the marker alone or with a pointer, never a value that only starts like one", () => {
+    expect(isRedactedSecret(SECRET_REDACTED)).toBe(true);
+    expect(isRedactedSecret(`${SECRET_REDACTED}#/keys/1`)).toBe(true);
+    expect(isRedactedSecret(`${SECRET_REDACTED}#note`)).toBe(false);
+    expect(isRedactedSecret(`${SECRET_REDACTED}#`)).toBe(false);
   });
 });

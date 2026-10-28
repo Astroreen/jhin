@@ -856,25 +856,25 @@ function activateScheduler(context: PluginContext): void {
       if (namedSecrets() === undefined) return;
       const kept = await kv.get(NAMESPACE, ORPHANS_KEY);
       if (!Array.isArray(kept) || kept.length === 0) return;
-      const done: string[] = [];
       for (const id of kept) {
         if (typeof id !== "string") continue;
-        // A task that holds a secret in the store again keeps it.
-        if ((await load(id))?.webhookSecretInStore === true) {
-          done.push(id);
-          continue;
-        }
-        try {
-          deleteSecret(id);
-          done.push(id);
-        } catch (error) {
-          context.log.warn("could not delete a webhook's signing secret; it stays listed", {
-            taskId: id,
-            error: messageOf(error),
-          });
-        }
+        // Under the task's lock, so a change that signs it again meanwhile is not undone.
+        await locked(id, async () => {
+          // A task that holds a secret in the store again keeps it.
+          if ((await load(id))?.webhookSecretInStore !== true) {
+            try {
+              deleteSecret(id);
+            } catch (error) {
+              context.log.warn("could not delete a webhook's signing secret; it stays listed", {
+                taskId: id,
+                error: messageOf(error),
+              });
+              return;
+            }
+          }
+          await changeOrphans((ids) => ids.filter((other) => other !== id));
+        });
       }
-      await changeOrphans((ids) => ids.filter((id) => !done.includes(id)));
     })
     .catch((error: unknown) =>
       context.log.warn("could not delete webhook signing secrets left in the store", {
@@ -886,7 +886,12 @@ function activateScheduler(context: PluginContext): void {
     stopped = true;
     clearTimeout(timer);
     timer = undefined;
-    await Promise.allSettled([recovered, migrated, swept, orphanWrites]);
+    await Promise.allSettled([recovered, migrated, swept]);
+    // Also a write a change queued while the others were drained.
+    for (let pending = orphanWrites; ; pending = orphanWrites) {
+      await pending;
+      if (pending === orphanWrites) break;
+    }
     await Promise.allSettled([...activeRuns.values(), ticking, arming]);
     // Deliveries still queued are marked failed, not run.
     await Promise.allSettled([...webhookQueues.values()].map((queue) => queue.tail));
