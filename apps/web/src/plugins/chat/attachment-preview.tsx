@@ -299,6 +299,17 @@ export function AttachmentFilePreview(
     readonly renderSource?:
       | ((source: { text: string; wordWrap: boolean }) => ReactNode)
       | undefined;
+    /**
+     * The text as the file panel holds it (what it read, under its unsaved edits, D1647), in
+     * place of reading `file`.
+     */
+    readonly text?: { readonly text: string; readonly truncated: boolean } | undefined;
+    /** Above the file, under its header: the file panel's "Read-only connection" (D1646). */
+    readonly notice?: ReactNode;
+    /** A rendered markdown's task box ticked (D1648); its boxes stay disabled without it. */
+    readonly onTaskListChange?:
+      | ((input: { markerOffset: number; checked: boolean }) => void)
+      | undefined;
   },
 ) {
   const chat = useChat();
@@ -309,7 +320,9 @@ export function AttachmentFilePreview(
     kind === "markdown" ? "markdown" : kind === "html" ? "html" : delimiter ? "table" : null;
   const [rendered, setRendered] = useState(true);
   const [revision, setRevision] = useState(0);
-  const [content, setContent] = useState<{ text: string; truncated: boolean } | null>(null);
+  const [readContent, setContent] = useState<{ text: string; truncated: boolean } | null>(null);
+  const held = props.text !== undefined;
+  const content = props.text ?? readContent;
   const [contentError, setContentError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -326,7 +339,7 @@ export function AttachmentFilePreview(
   const wordWrap = useSection(chat.context, DIFF_SECTION, DiffSettings).wordWrap;
 
   useEffect(() => {
-    if (!needsText) return;
+    if (!needsText || held) return;
     let current = true;
     setContent(null);
     setContentError(null);
@@ -337,7 +350,7 @@ export function AttachmentFilePreview(
     return () => {
       current = false;
     };
-  }, [needsText, props.file, props.stored, props.loader, revision]);
+  }, [needsText, held, props.file, props.stored, props.loader, revision]);
 
   useEffect(() => {
     if (!copied) return;
@@ -345,7 +358,7 @@ export function AttachmentFilePreview(
     return () => clearTimeout(timer);
   }, [copied]);
 
-  const failure = error ?? (needsText ? contentError : null);
+  const failure = error ?? (needsText && !held ? contentError : null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const shownFailure = failure ?? mediaError;
   const showsRawText =
@@ -397,7 +410,11 @@ export function AttachmentFilePreview(
       <DelimitedTablePreview delimiter={delimiter} name={props.name} text={content.text} />
     ) : kind === "markdown" && rendered ? (
       <ScrollArea className="min-h-0 flex-1">
-        <MessageText className="mx-auto max-w-4xl px-6 py-5" text={content.text} />
+        <MessageText
+          className="mx-auto max-w-4xl px-6 py-5"
+          onTaskListChange={content.truncated ? undefined : props.onTaskListChange}
+          text={content.text}
+        />
       </ScrollArea>
     ) : props.renderSource !== undefined && !content.truncated ? (
       props.renderSource({ text: content.text, wordWrap })
@@ -538,6 +555,7 @@ export function AttachmentFilePreview(
           </FileSurfaceAction>
         ) : null}
       </div>
+      {props.notice}
       {content?.truncated ? (
         <FileSurfaceNotice>
           Preview limited to the first 1 MB

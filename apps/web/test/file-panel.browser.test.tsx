@@ -1,12 +1,14 @@
 import { toDisposable, type PluginContext } from "@jhin/sdk";
 import type { NodeCatalog, NodeTarget } from "@jhin/client-api";
-import { act } from "react";
+import type { RpcClient } from "@jhin/rpc";
+import { act, useContext } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
 import { DiffSettings } from "../src/lib/settings.ts";
 import { useAgentSkills } from "../src/plugins/chat/agent-skills.ts";
+import { createFileEdits, useFilePending } from "../src/plugins/chat/file-edits.ts";
 import { FilePanel, FilesPanel } from "../src/plugins/chat/file-panel.tsx";
 import { createFileReveals } from "../src/plugins/chat/file-panel-route.ts";
 import { ChatContext, type ChatServices } from "../src/plugins/chat/services.ts";
@@ -26,13 +28,25 @@ function fakeNode() {
     resolve(value: unknown): void;
     reject(error: unknown): void;
   }[] = [];
+  const waiters: { method: string; arrived(params: Record<string, unknown>): void }[] = [];
   const call = (_target: NodeTarget, method: string, params: Record<string, unknown>) => {
     calls.push({ method, params });
-    return new Promise((resolve, reject) => pending.push({ method, resolve, reject }));
+    const result = new Promise((resolve, reject) => pending.push({ method, resolve, reject }));
+    const index = waiters.findIndex((waiter) => waiter.method === method);
+    if (index >= 0) waiters.splice(index, 1)[0]!.arrived(params);
+    return result;
+  };
+  /** A call to `method` waits to be settled: now, or when the next one comes. */
+  const arrival = async (method: string) => {
+    if (pending.some((waiting) => waiting.method === method)) return;
+    await new Promise((arrived) => waiters.push({ method, arrived }));
   };
   return {
     calls,
     call,
+    /** Resolves with the params of the next call to `method`. */
+    next: (method: string) =>
+      new Promise<Record<string, unknown>>((arrived) => waiters.push({ method, arrived })),
     /** Settles the oldest call still waiting. */
     async answer(value: unknown) {
       await act(async () => pending.shift()!.resolve(value));
@@ -42,8 +56,9 @@ function fakeNode() {
       const [call] = pending.splice(index, 1);
       await act(async () => call!.resolve(value));
     },
-    /** Settles the oldest waiting call to `method`. */
+    /** Settles the oldest waiting call to `method`, once one came. */
     async answerTo(method: string, value: unknown) {
+      await arrival(method);
       const index = pending.findIndex((waiting) => waiting.method === method);
       const [call] = pending.splice(index, 1);
       await act(async () => call!.resolve(value));
@@ -51,10 +66,46 @@ function fakeNode() {
     async fail(error: unknown) {
       await act(async () => pending.shift()!.reject(error));
     },
+    /** Fails the oldest waiting call to `method`, once one came. */
+    async failTo(method: string, error: unknown) {
+      await arrival(method);
+      const index = pending.findIndex((waiting) => waiting.method === method);
+      const [failed] = pending.splice(index, 1);
+      await act(async () => failed!.reject(error));
+    },
   };
 }
 
-function services(node: ReturnType<typeof fakeNode>, nodeCatalog: NodeCatalog | undefined) {
+/** The connection to the node, whose state the test changes (a reconnect). */
+function fakeConnections() {
+  const listeners = new Set<() => void>();
+  let connection = {
+    id: target.node,
+    url: target.node,
+    label: "a",
+    client: {} as RpcClient,
+    state: "open" as "open" | "connecting",
+  };
+  return {
+    get: () => connection,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return toDisposable(() => listeners.delete(listener));
+    },
+    async set(state: "open" | "connecting") {
+      connection = { ...connection, state };
+      await act(async () => {
+        for (const listener of Array.from(listeners)) listener();
+      });
+    },
+  };
+}
+
+function services(
+  node: ReturnType<typeof fakeNode>,
+  nodeCatalog: NodeCatalog | undefined,
+  connections = fakeConnections(),
+) {
   const context = {
     config: {
       get: () => DiffSettings.parse({}),
@@ -65,6 +116,7 @@ function services(node: ReturnType<typeof fakeNode>, nodeCatalog: NodeCatalog | 
     context,
     settings: { values: () => ({}), patch: () => undefined, reset: () => undefined },
     fileReveals: createFileReveals(),
+    fileEdits: createFileEdits(connections),
     threads: {
       call: node.call,
       catalog: () => nodeCatalog,
@@ -261,6 +313,183 @@ describe("the file panel (D1342)", () => {
     ]);
     expect(localStorage.getItem("jhin.lastEditor")).toBe("zed");
     localStorage.removeItem("jhin.lastEditor");
+  });
+});
+
+/** What the file's tab draws its dot from (D1645). */
+function TabDot(props: { place: { target: NodeTarget; projectId?: string; threadId?: string } }) {
+  const chat = useContext(ChatContext)!;
+  const pending = useFilePending(chat.fileEdits, props.place, "docs/tasks.md");
+  return pending ? <span aria-label="Unsaved changes" role="status" /> : null;
+}
+
+describe("editing a project's file (D1645–D1648)", () => {
+  const tasks = "# Tasks\n\n- [ ] ship\n- [x] test\n";
+
+  async function tasksFile(connections = fakeConnections()) {
+    const node = fakeNode();
+    const toasts: { title: string }[] = [];
+    const chat = {
+      ...services(node, catalog, connections),
+      toasts: { show: (toast: { title: string }) => toasts.push(toast) },
+    } as unknown as ChatServices;
+    await mount(
+      <>
+        <TabDot place={{ target, projectId: "p1" }} />
+        <FilePanel
+          embedded
+          onClose={() => undefined}
+          path="docs/tasks.md"
+          projectId="p1"
+          target={target}
+          threadId={undefined}
+        />
+      </>,
+      chat,
+    );
+    await node.answerTo("projects.read-file", {
+      path: "docs/tasks.md",
+      sizeBytes: tasks.length,
+      data: encode(tasks),
+      truncated: false,
+    });
+    await node.answerTo("editors.list", { editors: [] });
+    return { node, toasts };
+  }
+  const dot = page.getByRole("status", { name: "Unsaved changes" });
+  const ship = page.getByRole("checkbox", { name: "Toggle task" }).first();
+
+  it("ticks a task box, which writes the file, the dot showing until the write succeeds", async () => {
+    const { node } = await tasksFile();
+    await expect.element(ship).not.toBeChecked();
+    await expect.element(dot).not.toBeInTheDocument();
+    const write = node.next("projects.write-file");
+    await ship.click();
+    await expect.element(ship).toBeChecked();
+    await expect.element(dot).toBeInTheDocument();
+    expect(await write).toEqual({
+      projectId: "p1",
+      path: "docs/tasks.md",
+      contents: "# Tasks\n\n- [x] ship\n- [x] test\n",
+    });
+    // Written: the file is read again, and the dot goes.
+    const reread = node.next("projects.read-file");
+    await node.answerTo("projects.write-file", { path: "docs/tasks.md" });
+    await reread;
+    await expect.element(dot).not.toBeInTheDocument();
+    await node.answerTo("projects.read-file", {
+      path: "docs/tasks.md",
+      sizeBytes: tasks.length,
+      data: encode("# Tasks\n\n- [x] ship\n- [x] test\n"),
+      truncated: false,
+    });
+    await expect.element(ship).toBeChecked();
+  });
+
+  it("keeps the edits of a read-only connection, and writes them when it connects again", async () => {
+    const connections = fakeConnections();
+    const { node, toasts } = await tasksFile(connections);
+    const write = node.next("projects.write-file");
+    await ship.click();
+    await write;
+    // The node's answer to a token without `projects.write`.
+    await node.failTo(
+      "projects.write-file",
+      Object.assign(new Error("Caller lacks projects.write for projects.write-file"), {
+        code: "PERMISSION_DENIED",
+      }),
+    );
+    expect(toasts).toEqual([]);
+    await expect
+      .element(
+        page.getByText("Read-only connection. Unsaved edits are kept until write access returns."),
+      )
+      .toBeVisible();
+    // The text stays as ticked, its boxes disabled (no "Toggle task"), and the file still pending.
+    const box = page.getByRole("checkbox").first();
+    await expect.element(box).toBeChecked();
+    await expect.element(box).toBeDisabled();
+    await expect.element(ship).not.toBeInTheDocument();
+    await expect.element(dot).toBeInTheDocument();
+    const again = node.next("projects.write-file");
+    await connections.set("connecting");
+    await connections.set("open");
+    expect(await again).toMatchObject({ contents: "# Tasks\n\n- [x] ship\n- [x] test\n" });
+    await expect
+      .element(page.getByText("Read-only connection.", { exact: false }))
+      .not.toBeInTheDocument();
+    await node.answerTo("projects.write-file", { path: "docs/tasks.md" });
+    await expect.element(dot).not.toBeInTheDocument();
+  });
+
+  it("takes the text on disk when a turn ends while nothing is pending", async () => {
+    const node = fakeNode();
+    const listeners = new Set<() => void>();
+    let current = {
+      ...catalog,
+      threads: [
+        {
+          id: "t1",
+          projectId: "p1",
+          title: "Thread",
+          lastTurn: { turnId: "u1", status: "running" },
+        },
+      ],
+    } as unknown as NodeCatalog;
+    const chat = {
+      ...services(node, current),
+      threads: {
+        call: node.call,
+        catalog: () => current,
+        subscribe: (_target: NodeTarget, listener: () => void) => {
+          listeners.add(listener);
+          return toDisposable(() => listeners.delete(listener));
+        },
+      },
+    } as unknown as ChatServices;
+    await mount(
+      <FilePanel
+        embedded
+        onClose={() => undefined}
+        path="src/app.ts"
+        projectId={undefined}
+        target={target}
+        threadId="t1"
+      />,
+      chat,
+    );
+    await node.answerTo("projects.read-file", {
+      path: "src/app.ts",
+      sizeBytes: 26,
+      data: encode("export const port = 8080;\n"),
+      truncated: false,
+    });
+    const panel = page.getByRole("region", { name: "File preview" });
+    await expect.element(panel.getByText("8080")).toBeVisible();
+    const reread = node.next("projects.read-file");
+    current = {
+      ...current,
+      threads: [
+        {
+          id: "t1",
+          projectId: "p1",
+          title: "Thread",
+          lastTurn: { turnId: "u1", status: "completed" },
+        },
+      ],
+    } as unknown as NodeCatalog;
+    await act(async () => {
+      for (const listener of Array.from(listeners)) listener();
+    });
+    expect(await reread).toMatchObject({ projectId: "p1", threadId: "t1", path: "src/app.ts" });
+    await node.answerTo("projects.read-file", {
+      path: "src/app.ts",
+      sizeBytes: 26,
+      data: encode("export const port = 9090;\n"),
+      truncated: false,
+    });
+    await expect.element(panel.getByText("9090")).toBeVisible();
+    await expect.element(panel.getByText("8080")).not.toBeInTheDocument();
   });
 });
 

@@ -551,6 +551,62 @@ test("D1641–D1643: a chip's folder suffix and menu, the explorer's menu into t
   await info.attach("the Files tab reopened", { path: reopenShot, contentType: "image/png" });
 });
 
+test("D1645–D1648: a markdown file's task box ticked and its source edited, the tab's dot until each write lands", async ({
+  page,
+}, info) => {
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  const file = Path.join(scratch, "notes", "tasks.md");
+  Fs.mkdirSync(Path.dirname(file), { recursive: true });
+  Fs.writeFileSync(file, "# Tasks\n\n- [ ] ship the editor\n- [ ] write the docs\n");
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("see `notes/tasks.md`");
+  await message.press("Enter");
+  const agent = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
+  await agent.getByRole("button", { name: "Preview notes/tasks.md" }).click();
+  const preview = page.getByRole("region", { name: "File preview" });
+  const dot = page.locator("[data-pending-dot]");
+
+  // T3's task box: ticking it writes the file, the tab's dot showing until the write lands.
+  const ship = preview.getByRole("checkbox", { name: "Toggle task" }).first();
+  await ship.check();
+  await expect(dot).toHaveCount(1);
+  const tickedShot = info.outputPath("task-ticked-pending.png");
+  await page.screenshot({ path: tickedShot });
+  await info.attach("a ticked task box, its write pending", {
+    path: tickedShot,
+    contentType: "image/png",
+  });
+  await expect(dot).toHaveCount(0);
+  expect(Fs.readFileSync(file, "utf8")).toBe(
+    "# Tasks\n\n- [x] ship the editor\n- [ ] write the docs\n",
+  );
+  const savedShot = info.outputPath("task-ticked-saved.png");
+  await page.screenshot({ path: savedShot });
+  await info.attach("the ticked task box, written", { path: savedShot, contentType: "image/png" });
+
+  // The source in Pierre's editor: a typed change shows the dot until it is written.
+  await preview.getByRole("button", { name: "Show markdown source" }).click();
+  await preview.getByText("write the docs").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" today");
+  await expect(dot).toHaveCount(1);
+  const editedShot = info.outputPath("source-edited-pending.png");
+  await page.screenshot({ path: editedShot });
+  await info.attach("an edit of the source, its write pending", {
+    path: editedShot,
+    contentType: "image/png",
+  });
+  await expect(dot).toHaveCount(0);
+  expect(Fs.readFileSync(file, "utf8")).toBe(
+    "# Tasks\n\n- [x] ship the editor\n- [ ] write the docs today\n",
+  );
+  const writtenShot = info.outputPath("source-edited-saved.png");
+  await page.screenshot({ path: writtenShot });
+  await info.attach("the edit, written", { path: writtenShot, contentType: "image/png" });
+});
+
 test("spaces a heading as T3 does, and shows a code block's language with its icon", async ({
   page,
 }, info) => {

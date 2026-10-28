@@ -1,4 +1,5 @@
 import type { RightPanel } from "@jhin/client-api";
+import type { FileEdits } from "./file-edits.ts";
 import type { FileReveals } from "./file-panel-route.ts";
 import type {
   AssistantCitation,
@@ -138,6 +139,8 @@ export interface ChatServices {
   readonly composer: ComposerHandle;
   /** Lines of files the file panel is asked to show (D1430). */
   readonly fileReveals: FileReveals;
+  /** The file panel's unsaved edits, shared with its tabs (D1645–D1648). */
+  readonly fileEdits: FileEdits;
   /** The right panel a message's file opens in (D1435), when the client has one. */
   readonly rightPanel: RightPanel | undefined;
   /** The open thread's find bar (D801), for `chat.find`. */
