@@ -73,7 +73,7 @@ export async function node(
     await kernel.stop();
   };
   stops.push(stop);
-  return { kernel, client, data, storage, stop };
+  return { kernel, client, data, storage, live, stop };
 }
 
 /**

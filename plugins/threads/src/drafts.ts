@@ -1,10 +1,15 @@
 import { createMemoryStreams, type LiveStreams } from "@jhin/rpc";
-import { z, type PluginContext } from "@jhin/sdk";
+import { describePermissions, z, type PluginContext } from "@jhin/sdk";
 import type { Json, KeyValueStore } from "@jhin/storage-api";
 
 /** The live stream a node's clients follow for draft changes (docs/plans/config-ui.md D486). */
 const DRAFTS_STREAM = "threads/drafts";
 const NAMESPACE = "jhin.threads.drafts";
+/**
+ * What was typed and not sent is no thread state: an agent's `threads.read`
+ * never reads it (docs/plans/config-ui.md D1704).
+ */
+const DRAFTS_PERMISSION = "threads.drafts";
 
 /** A thread's draft (`thread:<id>`), or a new thread's in a project (`project:<id>`). */
 const DraftKey = z.string().regex(/^(thread|project):[^\s]{1,200}$/);
@@ -28,10 +33,16 @@ export function registerDrafts(
   const streams = createMemoryStreams({ log: context.log });
   /** The set in flight per key, so the next one waits for it. */
   const queues = new Map<string, Promise<void>>();
+  describePermissions(context, {
+    [DRAFTS_PERMISSION]: {
+      title: "Sync drafts",
+      description: "Read and keep what was typed and not sent yet, for every device.",
+    },
+  });
   // Nothing is kept: a client reads the draft when its composer opens.
   if (live !== undefined) {
     context.subscriptions.add(
-      live.serve(DRAFTS_STREAM, streams, { permissions: ["threads.read"] }),
+      live.serve(DRAFTS_STREAM, streams, { permissions: [DRAFTS_PERMISSION] }),
     );
   }
   context.commands.register({
@@ -40,7 +51,7 @@ export function registerDrafts(
       "The draft of a thread (thread:<id>) or of a new thread in a project (project:<id>), as the last device that typed it left it (D486)",
     input: z.object({ key: DraftKey }),
     output: Draft.nullable(),
-    permissions: ["threads.read"],
+    permissions: [DRAFTS_PERMISSION],
     handler: async ({ key }) => {
       const value = Draft.safeParse(await kv.get(NAMESPACE, key));
       return value.success ? value.data : null;
@@ -51,7 +62,7 @@ export function registerDrafts(
     description: "Keeps a draft for every device; an older one than what is kept is ignored (D486)",
     input: z.object({ key: DraftKey }).extend(Draft.shape),
     output: z.object({ applied: z.boolean() }),
-    permissions: ["threads.write"],
+    permissions: [DRAFTS_PERMISSION],
     // One key's sets run in turn: two read-then-write runs must not interleave,
     // or an older text could be written last.
     handler: ({ key, prompt, at }) => {

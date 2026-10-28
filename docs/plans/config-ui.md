@@ -248,7 +248,8 @@ rules of the form below), the decision says so.
   `threads.draft.set` (`{ key, prompt, at }`, key `thread:<id>` or
   `project:<id>`; an empty prompt is kept as cleared, so an older text
   cannot come back) keep it in `storage.kv`, the later `at` winning, and the live stream
-  `threads/drafts` tells a node's clients of a change. A composer takes the
+  `threads/drafts` tells a node's clients of a change (all three need
+  `threads.drafts` since D1704). A composer takes the
   node's draft when it is later than its own and the composer is not
   focused, so typing is never overwritten under the cursor; it reads the
   node's draft when it opens, and a draft of a mesh member's thread is read
@@ -274,6 +275,24 @@ rules of the form below), the decision says so.
   never synced itself; with a switch off, the device neither sends nor takes
   that kind of state.
   Visits are thread state on the node (D485) and always shared, as in T3.
+- **D1704. A draft is read and kept with `threads.drafts`** (W48,
+  `security.md` D1701 (1)). A draft is what a person typed and has not
+  sent (a pasted key, a note to self), not thread state, yet D486 guarded
+  it with `threads.read` and `threads.write`, which every thread's agent
+  and MCP client holds (`AGENT_PERMISSIONS`): an agent could read every
+  draft of every thread and project, and overwrite one. `threads.draft.get`,
+  `threads.draft.set` and the stream `threads/drafts` now need
+  `threads.drafts` ("Sync drafts", "Read and keep what was typed and not
+  sent yet, for every device."), as device settings need
+  `host.device-settings` (D487). `AGENT_PERMISSIONS` does not get it; the
+  owner and devices paired with the owner's grants hold it through `*` or
+  `threads.*`. A device whose grants name `threads.read` and
+  `threads.write` only keeps its drafts to itself, as with an older node
+  (its calls are refused and ignored, D486) or with the switch off (D488).
+  A token's grants never change in place (`security.md` D412), so such a
+  device gets draft sync by pairing again with "Sync drafts" ticked in the
+  pairing dialog, which lists every permission (D424). Pairing presets
+  are not in code: a code defaults to its creator's grants (D419).
 
 ## Project settings and multi-line text (W42)
 
@@ -567,7 +586,8 @@ A stack of PRs, each on the previous one. Public API, all additive:
    ("visits shared by every device"), `apps/web/test/thread-status.test.ts`
    ("visits shared through the thread's node").
 5. Drafts and device settings across devices (D486–D488):
-   `threads.draft.get`, `threads.draft.set` and the stream `threads/drafts`;
+   `threads.draft.get`, `threads.draft.set` and the stream `threads/drafts`
+   (permission `threads.drafts`, D1704);
    `host.device-settings.get`, `host.device-settings.patch` and the stream
    `host/device-settings` (permission `host.device-settings`);
    `client.settings@1.1`; the section `jhin.sync`. The proof:
