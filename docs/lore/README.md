@@ -18,6 +18,7 @@ is enough: "this is a moonbase" means the whole story below.
 | [own homework](own-homework.md)                   | a review whose checklist the author wrote finds only what it foresaw  |
 | [workaround](workaround.md)                       | a workaround nobody reported outlives the bug, in every copy of it    |
 | [toll road](toll-road.md)                         | a guard that makes the honest path costly gets routed around          |
+| [nobody's turn](nobodys-turn.md)                  | everyone waits for someone else; nobody holds the next step           |
 
 Most of these come from OpenRig's experience
 ([`../research/openrig.md`](../research/openrig.md)). Jhin's own stories go
