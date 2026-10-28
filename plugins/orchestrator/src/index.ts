@@ -80,6 +80,8 @@ export { ORCHESTRATOR_WORKFLOW };
 const NAMESPACE = "jhin.orchestrator";
 const CONFIG_SECTION = "jhin.orchestrator";
 export const DEFAULT_WAIT_MS = 10 * 60 * 1000;
+/** The least room a review brief gets in a message of several slices; less, and it is named by its address. */
+const MIN_BRIEF_SHARE = 400;
 const MAX_WAIT_MS = 60 * 60 * 1000;
 /** One part of a wait on another node, under `mesh.call`'s 30-second deadline (D1545). */
 const REMOTE_WAIT_MS = 20 * 1000;
@@ -819,6 +821,13 @@ export default definePlugin({
         message: String(message ?? error),
       };
     };
+    /** A slice that could not be handed, with why. */
+    interface Failure {
+      readonly sliceId: string;
+      readonly code?: string;
+      readonly message: string;
+      readonly error?: unknown;
+    }
     /** What a handoff answers for one slice. */
     interface Handed {
       readonly slice: Slice;
@@ -833,14 +842,19 @@ export default definePlugin({
      * all, instead of one turn each that finds the rest already done.
      */
     async function handOffTogether(
-      sliceIds: readonly string[],
+      given: readonly string[],
       invocation: Invocation,
       node?: string,
-    ): Promise<Handed[]> {
+      /** Slices the caller loaded already, by id: they are not read again. */
+      preloaded?: ReadonlyMap<string, HandoffInput>,
+    ): Promise<{ handed: Handed[]; failed: Failure[] }> {
       const place = placeOf(node, invocation);
       const missionNode = node ?? nodeId;
+      const sliceIds = [...new Set(given)];
       const loaded: HandoffInput[] = [];
-      for (const sliceId of sliceIds) loaded.push(await place.load(sliceId));
+      for (const sliceId of sliceIds) {
+        loaded.push(preloaded?.get(sliceId) ?? (await place.load(sliceId)));
+      }
       const { mission, slices, intent } = loaded[0]!;
       const apart = loaded.find(
         (item) =>
@@ -871,11 +885,11 @@ export default definePlugin({
           ? {}
           : { nodeId: thread.nodeId };
       const answers = new Map<string, Handed>();
+      const unwritten: Failure[] = [];
       const toHand: Slice[] = [];
       // An assignee of any node is handed its slice (D1541), unless its node is away (D1547).
       const progress = missionProgress(slices, { away: awayOf(slices) });
       for (const { slice } of loaded) {
-        if (answers.has(slice.id) || toHand.includes(slice)) continue;
         if (slice.status === "active") {
           // Its thread on the assignee's node first, on whatever node that is (D1541).
           const linked =
@@ -939,6 +953,8 @@ export default definePlugin({
                 intent,
                 ...on,
               });
+        // The briefs share what the slices' text leaves (D1245); too little, and each is
+        // named by its address instead. The whole stays under MAX_MESSAGE_LENGTH.
         const share = Math.floor(
           (MAX_MESSAGE_LENGTH - text.length - briefs.length * 2) / Math.max(1, briefs.length),
         );
@@ -947,14 +963,22 @@ export default definePlugin({
             ? cut(
                 [text, ...briefs.map((item) => item.markdown)].join("\n"),
                 MAX_MESSAGE_LENGTH,
-                `review_brief { sliceId: "${briefs[0]?.slice.id ?? toHand[0]!.id}" }`,
+                toHand.length === 1 || briefs.length === 1
+                  ? `review_brief { sliceId: "${briefs[0]?.slice.id ?? toHand[0]!.id}" }`
+                  : `missions_get { missionId: "${mission.id}" }`,
               )
-            : [
-                text,
-                ...briefs.map((item) =>
-                  cut(item.markdown, share, `review_brief { sliceId: "${item.slice.id}" }`),
-                ),
-              ].join("\n\n");
+            : cut(
+                [
+                  text,
+                  ...briefs.map((item) =>
+                    share >= MIN_BRIEF_SHARE
+                      ? cut(item.markdown, share, `review_brief { sliceId: "${item.slice.id}" }`)
+                      : `(The review brief of \`${item.slice.id}\`: read it with review_brief { sliceId: "${item.slice.id}" }.)`,
+                  ),
+                ].join("\n\n"),
+                MAX_MESSAGE_LENGTH,
+                `missions_get { missionId: "${mission.id}" }`,
+              );
         // A2's agents.send delivers it: an agent's current generation (its first is
         // started then, D606), queued while it works; an owner's inbox; on another
         // node through the mesh (D1541). The id is the slices as they were planned,
@@ -976,17 +1000,23 @@ export default definePlugin({
             ? undefined
             : // The delivering node: here when it names none.
               { threadId: delivery.threadId, ...linkedOn({ nodeId: delivery.nodeId ?? nodeId }) };
+        // Each slice is written on its own: one that fails is reported alone, the
+        // others were handed. A retry of it sends it again, as a message of its own.
         for (const slice of toHand) {
-          if (thread !== undefined) {
-            await place.write("slices.link", { sliceId: slice.id, ...thread });
+          try {
+            if (thread !== undefined) {
+              await place.write("slices.link", { sliceId: slice.id, ...thread });
+            }
+            const step = stepOf(slice);
+            const updated = await place.write<Slice>("slices.update", {
+              sliceId: slice.id,
+              status: "active",
+              ...(step === undefined ? {} : { step }),
+            });
+            answers.set(slice.id, { slice: updated, delivered, ...thread, handed: true });
+          } catch (error) {
+            unwritten.push({ sliceId: slice.id, ...failureOf(error), error });
           }
-          const step = stepOf(slice);
-          const updated = await place.write<Slice>("slices.update", {
-            sliceId: slice.id,
-            status: "active",
-            ...(step === undefined ? {} : { step }),
-          });
-          answers.set(slice.id, { slice: updated, delivered, ...thread, handed: true });
         }
         // Its node follows it for refocus from here on (D1543); the mission's
         // node asks itself when the link reaches its fold.
@@ -994,10 +1024,16 @@ export default definePlugin({
           await askToFollow(thread.nodeId, thread.threadId);
         }
       }
-      return [...new Set(sliceIds)].map((sliceId) => answers.get(sliceId)!);
+      return {
+        handed: sliceIds.flatMap((sliceId) => answers.get(sliceId) ?? []),
+        failed: unwritten,
+      };
     }
-    const handOff = async (sliceId: string, invocation: Invocation, node?: string) =>
-      (await handOffTogether([sliceId], invocation, node))[0]!;
+    const handOff = async (sliceId: string, invocation: Invocation, node?: string) => {
+      const { handed, failed } = await handOffTogether([sliceId], invocation, node);
+      if (failed[0] !== undefined) throw failed[0].error;
+      return handed[0]!;
+    };
     /** Slices grouped by mission and assignee, in the order they come. */
     async function handOffGrouped(
       sliceIds: readonly string[],
@@ -1007,9 +1043,12 @@ export default definePlugin({
       const place = placeOf(node, invocation);
       const groups = new Map<string, string[]>();
       const refused: { sliceId: string; code?: string; message: string }[] = [];
+      const loaded = new Map<string, HandoffInput>();
       for (const sliceId of new Set(sliceIds)) {
         try {
-          const { slice } = await place.load(sliceId);
+          const input = await place.load(sliceId);
+          loaded.set(sliceId, input);
+          const { slice } = input;
           const key = `${slice.missionId}\n${slice.assignee ?? ""}`;
           groups.set(key, [...(groups.get(key) ?? []), sliceId]);
         } catch (error) {
@@ -1019,7 +1058,9 @@ export default definePlugin({
       const handoffs: Handed[] = [];
       for (const group of groups.values()) {
         try {
-          handoffs.push(...(await handOffTogether(group, invocation, node)));
+          const done = await handOffTogether(group, invocation, node, loaded);
+          handoffs.push(...done.handed);
+          refused.push(...done.failed.map(({ error: _error, ...failure }) => failure));
         } catch (error) {
           refused.push(...group.map((sliceId) => ({ sliceId, ...failureOf(error) })));
         }

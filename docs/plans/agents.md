@@ -2551,10 +2551,15 @@ Decisions (M3):
   in one turn. One slice gets the message `slices.handoff` sends; several get
   "[Slices handed to you]" with each slice's spec, step and review line, and
   what they serve once; several review slices share the room left for their
-  briefs (D1245), each cut with its `review_brief` address. Its id is a hash
-  of the slices as planned, so a retry delivers it once. A group that cannot
-  be handed fails whole, in `failed` with its error, and the others go on;
-  slices already active answer `handed: false` and send nothing. The
+  briefs (D1245), each cut with its `review_brief` address, or named by it
+  alone when the slices' text leaves too little; the whole message stays
+  under `MAX_MESSAGE_LENGTH`. Its id is a hash of the slices as planned, so a
+  retry delivers it once. A group that cannot be handed fails whole, in
+  `failed` with its error, and the others go on; once the message is sent,
+  each slice is linked and set active on its own, and one whose write fails
+  is in `failed` alone (handing it again sends it again, as a message of its
+  own). A duplicated id is handed once; slices already active answer
+  `handed: false` and send nothing. The
   orchestrator hands each wave with it. Before, each handoff started a turn
   of its own: in the L3 run the reviewer did the wave in its first turn and
   spent the rest answering "Duplicate handoff".

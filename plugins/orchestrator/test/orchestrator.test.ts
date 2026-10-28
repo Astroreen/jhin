@@ -2,6 +2,7 @@ import * as Fs from "node:fs";
 
 import {
   INBOX_STREAM,
+  MAX_MESSAGE_LENGTH,
   MESSAGES_STREAM,
   MessageEvents,
   ThreadEvents,
@@ -366,6 +367,28 @@ describe("slices.handoff (D703)", () => {
     expect(
       (await client.call<{ entries: unknown[] }>("agents.conversation", { with: BUILDER })).entries,
     ).toHaveLength(1);
+  });
+
+  it("hands a duplicated id once, and keeps a long message under the limit (D1562)", async () => {
+    const { client, slice } = await node();
+    const long = "The walls stand straight. ".repeat(700);
+    const walls = await slice({ title: "Walls", spec: long, assignee: BUILDER });
+    const floor = await slice({ title: "Floor", spec: long, assignee: BUILDER });
+    const together = await client.call<{ handoffs: { slice: Slice }[]; failed: unknown[] }>(
+      "slices.handoff.together",
+      { sliceIds: [walls.id, walls.id, floor.id] },
+    );
+    expect(together.failed).toEqual([]);
+    expect(together.handoffs.map((item) => item.slice.id)).toEqual([walls.id, floor.id]);
+    const { entries } = await client.call<{ entries: { message: { body: string } }[] }>(
+      "agents.conversation",
+      { with: BUILDER },
+    );
+    expect(entries).toHaveLength(1);
+    const body = entries[0]!.message.body;
+    expect(body.length).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH);
+    expect(body).toContain("[Slices handed to you]");
+    expect(body).toContain("missions_get");
   });
 
   it("marks the owner's slice active, and refuses what is not ready here", async () => {
