@@ -119,6 +119,8 @@ export function usePullRequestMenuActions(
   const confirm = useInlineActionConfirm(link.key);
   useEffect(() => {
     if (!menuOpen || access === undefined) return;
+    // An earlier read may no longer apply: the menu offers nothing until this one answers.
+    setDetail(null);
     let live = true;
     void access.detail(link).then(
       (read) => {

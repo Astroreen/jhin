@@ -233,6 +233,16 @@ describe("git.pr.action (D1451)", () => {
     });
     await sc.client.call("git.pr.action", { projectId, url: at, action: "ready" });
     expect(glab.calls()).toContain("mr update 5 --repo https://gitlab.com/acme/demo --ready");
+    // GitLab rebases; a merge update is refused before glab is asked (D1661).
+    await expect(
+      sc.client.call("git.pr.action", {
+        projectId,
+        url: at,
+        action: "update-branch",
+        updateMethod: "merge",
+      }),
+    ).rejects.toThrow("GitLab does not update a branch with merge.");
+    expect(glab.calls().some((call) => call.startsWith("mr rebase"))).toBe(false);
   });
 
   it("refuses an action the forge lacks, with T3's words", async () => {
@@ -328,6 +338,10 @@ describe("T3's other pull request actions (D1661–D1665)", () => {
     await act("update-branch", { updateMethod: "rebase" });
     expect(gh.calls().join("\n")).toContain("-f id=PR_7 -f head=abc -f method=REBASE");
     expect(gh.calls().join("\n")).toContain("updatePullRequestBranch(input:");
+    // A merge whose state cannot be read is left to `gh`, as before D1662.
+    gh.graphql({ data: {} });
+    await act("merge", { mergeMethod: "merge" });
+    expect(gh.calls()).toContain(`pr merge ${url} --merge`);
   });
 
   it("deletes a merged pull request's branch with T3's refusals", async () => {

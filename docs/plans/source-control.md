@@ -1937,8 +1937,8 @@ and `apps/web/src/components/settings/ProjectDefaultsSettings.tsx`.
   project's own in `projects` ("Default pull request merge method"; unset is
   T3's "Last selected"). `git.pr.detail` answers the project's as
   `defaultMergeMethod`. The client keeps the last method chosen in the menu
-  (`jhin.source-control`'s client state, per device, T3's
-  `uiStateStore.pullRequestMergeMethod`), and every merge picks as T3's
+  (per device, in its local storage under `jhin.pullRequestMergeMethod`, as
+  T3's persisted `uiStateStore.pullRequestMergeMethod`), and every merge picks as T3's
   `resolvePullRequestMergeMethod`: the project's, else the last chosen, else
   "merge", each only when allowed, else the first allowed: the speed actions
   (D1453) and the menu (D1663). The details row's "Merge" keeps T3's
