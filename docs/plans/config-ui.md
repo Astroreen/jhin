@@ -248,7 +248,8 @@ rules of the form below), the decision says so.
   `threads.draft.set` (`{ key, prompt, at }`, key `thread:<id>` or
   `project:<id>`; an empty prompt is kept as cleared, so an older text
   cannot come back) keep it in `storage.kv`, the later `at` winning, and the live stream
-  `threads/drafts` tells a node's clients of a change. A composer takes the
+  `threads/drafts` tells a node's clients of a change (all three need
+  `threads.drafts` since D1704). A composer takes the
   node's draft when it is later than its own and the composer is not
   focused, so typing is never overwritten under the cursor; it reads the
   node's draft when it opens, and a draft of a mesh member's thread is read
@@ -585,7 +586,8 @@ A stack of PRs, each on the previous one. Public API, all additive:
    ("visits shared by every device"), `apps/web/test/thread-status.test.ts`
    ("visits shared through the thread's node").
 5. Drafts and device settings across devices (D486–D488):
-   `threads.draft.get`, `threads.draft.set` and the stream `threads/drafts`;
+   `threads.draft.get`, `threads.draft.set` and the stream `threads/drafts`
+   (permission `threads.drafts`, D1704);
    `host.device-settings.get`, `host.device-settings.patch` and the stream
    `host/device-settings` (permission `host.device-settings`);
    `client.settings@1.1`; the section `jhin.sync`. The proof:

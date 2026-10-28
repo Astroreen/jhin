@@ -1,3 +1,4 @@
+import { AGENT_PERMISSIONS } from "@jhin/mcp-api";
 import { connectInMemory, memoryStoragePlugin } from "@jhin/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -572,8 +573,8 @@ describe("jhin.threads: drafts kept for every device (D486)", () => {
   it("keeps drafts from an agent's grants: they need threads.drafts (D1704)", async () => {
     const { client, kernel, live } = await node({ liveStreams: true });
     await client.call("threads.draft.set", { key: "thread:t1", prompt: "my key is 123", at: 10 });
-    // What every thread's agent holds of threads (`AGENT_PERMISSIONS` of `@jhin/mcp-api`).
-    const agent = ["threads.read", "threads.write"];
+    // What every thread's agent and MCP client holds.
+    const agent = AGENT_PERMISSIONS;
     const as = (permissions: readonly string[]) => ({
       caller: { id: "jhin.agent-claude:t1", permissions },
     });
@@ -606,5 +607,6 @@ describe("jhin.threads: drafts kept for every device (D486)", () => {
       });
     expect(await follow(agent)).toBe("PERMISSION_DENIED");
     expect(await follow(["threads.drafts"])).toBe("ready");
+    expect(await follow(["threads.*"])).toBe("ready");
   });
 });
