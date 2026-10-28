@@ -2650,9 +2650,32 @@ steer a Claude Code turn ended before it took go with them.
   response"; the user's messages stay visible, and so does an answer that
   had finished before the restart (T3's `completeSupersededReplyEntryIds`).
   Find in a thread (D801) opens a fold whose text matches, as T3's.
-- D1655–D1660 are kept for T3's Usage page beyond "Limits" (its "Cost" and
-  "Tokens" views and an account's reset credits), written when that work
-  starts.
+- **D1655. An account's reset credits on the Usage page,** T3's
+  `ResetCredits` and `resetCreditsSummary` (`UsageLimits.tsx`). Under an
+  agent's limits the page says T3's "N reset credit(s) banked · next
+  expires in X", or "No reset credits banked" right after the last one was
+  used, from the `resetCredits` the agent reports (`AgentUsageLimits`,
+  read by Codex since D1305); an agent that reports none shows nothing.
+- **D1656. "Use reset",** T3's `useResetCredit` and `ResetCreditDialog`.
+  `agent.runtime@1.17` (additive): `consumeResetCredit()` redeems one credit
+  of the agent's account and answers T3's outcome (`reset`,
+  `nothingToReset`, `noCredit`, `alreadyRedeemed`). Codex's asks its app
+  server (`account/rateLimitResetCredit/consume`, with an idempotency key
+  kept for a retry of the same press, T3's `resetCreditCoordinator`), and
+  reads its limits again afterwards. The node command
+  `agents.reset-credit.consume` (`agentId`; permission `threads.write`, as a turn that spends the account; T3 asks for its providers scope, which Jhin has not)
+  calls it. The page's "Use reset" ("Using…" while it runs) asks first,
+  T3's "Use a reset credit?" ("This redeems one credit on your account and
+  clears the current rate-limit windows. It cannot be undone.", "Cancel",
+  "Use credit"), and then says T3's result: "Reset applied. Your windows
+  have cleared.", "Nothing to reset right now.", "No reset credit left.",
+  "That credit was already redeemed." or "Could not use the reset credit."
+- **D1657. T3's "Cost" and "Tokens" views wait** (Deferred): T3 builds them
+  by reading each CLI's transcripts on disk (`~/.claude/projects`,
+  `~/.codex/sessions`) and pricing them with LiteLLM's table, fetched once a
+  day, apart from its turns; a port is a node plugin of its own (a scanner
+  with its cache, prices and their overrides, the page's chart, totals and
+  breakdowns), not a change to the agents' turn events.
 
 ## Not ported (out of scope)
 
