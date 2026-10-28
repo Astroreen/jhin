@@ -1627,9 +1627,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return Number.isNaN(parsed) ? fallback : parsed;
   };
 
-  /** T3's `cleanWorktrees`: decides each managed worktree a thread works or worked in. */
   /** Orphans' sizes kept between sweeps (T3's `orphanSizes`, D1670). */
   const orphanSizes = new Map<string, number | null>();
+  /** T3's `cleanWorktrees`: decides each managed worktree a thread works or worked in. */
   async function sweepWorktrees(): Promise<CleanupReport> {
     const entries: CleanupEntry[] = [];
     const report = () => ({

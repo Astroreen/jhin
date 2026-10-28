@@ -390,8 +390,7 @@ const MAX_MEASURED_ENTRIES = 2_000_000;
 
 /**
  * T3's measureWorktree (D1670): the bytes of the files under `folder`, links not followed,
- * or `null` past 2,000,000 entries, a path that leaves the folder, or `deadline` (ms since
- * the epoch).
+ * or `null` past 2,000,000 entries or `deadline` (ms since the epoch).
  */
 export async function measureFolder(folder: string, deadline: number): Promise<number | null> {
   try {
@@ -409,11 +408,7 @@ export async function measureFolder(folder: string, deadline: number): Promise<n
         const names = await Fs.readdir(target);
         entries += names.length;
         if (entries > MAX_MEASURED_ENTRIES) return null;
-        for (const name of names) {
-          const child = Path.join(target, name);
-          if (!(child === root || child.startsWith(`${root}${Path.sep}`))) return null;
-          pending.push(child);
-        }
+        for (const name of names) pending.push(Path.join(target, name));
       }
     }
     return bytes;

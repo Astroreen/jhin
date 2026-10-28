@@ -2028,8 +2028,7 @@ At T3 Code `eb7b35ac`: `apps/server/src/terminal/Manager.ts` (`closeIdle`),
   budget of 30 seconds (the first one gets its own 30 seconds, as T3 lets
   it reach its own limit), sizes of orphans kept for the next sweeps. A
   measurement walks the folder without following links and gives up
-  (`null`) past 2,000,000 entries, a path that leaves the folder or its
-  time. The Storage page says T3's "Last run <time>. <size> recovered."
+  (`null`) past 2,000,000 entries or its time. The Storage page says T3's "Last run <time>. <size> recovered."
   and shows an entry's size at the right of its row (T3's `formatBytes`).
 
 #### Checkpoints: T3's fast path
