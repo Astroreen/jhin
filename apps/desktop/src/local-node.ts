@@ -4,7 +4,14 @@ import * as Net from "node:net";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { findRunningNode, isProcessAlive, localUrl } from "@jhin/node-host/running";
+import {
+  findRunningNode,
+  isProcessAlive,
+  localUrl,
+  SERVE_READY,
+  SERVE_STOP,
+  type ServeReady,
+} from "@jhin/node-host/running";
 
 /** Where the app finds the CLI and its own client plugin (resolved from the app's package). */
 export interface LocalNodePaths {
@@ -37,7 +44,7 @@ export function cliEntry(manifest: string): string {
   return Path.join(Path.dirname(manifest), bin);
 }
 
-/** How long a node may take to stop after SIGTERM before it is killed (T3 waits 5 s). */
+/** How long a node may take to stop after it was asked before it is killed (T3 waits 5 s). */
 const STOP_GRACE_MS = 5_000;
 
 /** The last lines a failed node printed, for the dialog that reports it. */
@@ -51,13 +58,13 @@ export function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * Starts `jhin serve --ui` with this app's client plugin, run by Electron's
- * own Node (D512), and resolves once it printed its web client's address.
- * Rejects with the node's output when it exits first.
+ * own Node (D512), and resolves once it said over its IPC channel that it is
+ * ready (D1687). Rejects with the node's output when it exits first.
  */
 export function startLocalNode(
   paths: LocalNodePaths,
   home = localNodeHome(),
-  /** Arms the SIGKILL after SIGTERM and returns its cancel; tests run it at once. */
+  /** Arms the kill after the stop was asked and returns its cancel; tests run it at once. */
   scheduleKill: (kill: () => void) => () => void = (kill) => {
     const timer = setTimeout(kill, STOP_GRACE_MS);
     return () => clearTimeout(timer);
@@ -83,26 +90,45 @@ export function startLocalNode(
     ],
     {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", JHIN_HOME: home },
-      stdio: ["ignore", "pipe", "pipe"],
+      // The channel carries the node's ready message and the app's stop (D1687, D1688).
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
   );
   let output = "";
   const append = (chunk: unknown) => {
     output = `${output}${String(chunk)}`.slice(-OUTPUT_LIMIT);
   };
-  child.stdout.on("data", append);
-  child.stderr.on("data", append);
+  child.stdout!.on("data", append);
+  child.stderr!.on("data", append);
   let stopping = false;
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   const exitListeners: ((output: string) => void)[] = [];
   child.once("exit", () => {
     if (!stopping) for (const listener of exitListeners) listener(output);
   });
-  /** SIGTERM, then SIGKILL if the node has not exited after the grace period. */
+  /**
+   * Asks the node to stop through its channel, which Windows has no signal for (D1688), else
+   * by SIGTERM; kills it if it has not exited after the grace period.
+   */
   const stop = async () => {
     stopping = true;
     if (child.exitCode !== null || child.signalCode !== null) return;
-    child.kill("SIGTERM");
+    const terminate = () => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    };
+    // A channel that fails now or while the message goes out falls back to the signal; the
+    // callback keeps such a failure from being an unhandled `error` event.
+    if (child.connected) {
+      try {
+        child.send({ type: SERVE_STOP }, (error) => {
+          if (error) terminate();
+        });
+      } catch {
+        terminate();
+      }
+    } else {
+      terminate();
+    }
     // A node stuck in its plugins' dispose must not keep the app from quitting.
     const cancel = scheduleKill(() => child.kill("SIGKILL"));
     await exited;
@@ -110,18 +136,23 @@ export function startLocalNode(
   };
 
   return new Promise((resolve, reject) => {
-    const onData = () => {
-      // Printed once every plugin is active: `ui: http://127.0.0.1:7777/` then `logs: <file>`.
-      if (!/^logs: /m.test(output)) return;
-      child.stdout.off("data", onData);
-      child.stderr.off("data", onData);
+    const onMessage = (message: unknown) => {
+      if ((message as { type?: unknown } | null)?.type !== SERVE_READY) return;
+      const ready = message as ServeReady;
+      child.off("message", onMessage);
       child.off("exit", onEarlyExit);
-      // `logs:` is the last line; without `ui:` before it the web client is not served
-      // (its plugin failed, the port is taken): the node's problem lines say why.
-      const url = /^ui: (http:\/\/\S+)$/m.exec(output)?.[1];
-      if (url === undefined) {
+      // Without `ui` the web client is not served (its plugin failed, the port is taken):
+      // the node's problems say why, as its lines do (D1487 reads the port from them).
+      if (ready.ui === undefined) {
+        const problems = ready.problems
+          .map((problem) => `${problem.status} ${problem.id}: ${problem.message}`)
+          .join("\n");
         void stop().then(() =>
-          reject(new Error(`The local node does not serve the web client:\n${output.trim()}`)),
+          reject(
+            new Error(
+              `The local node does not serve the web client:\n${problems || output.trim()}`,
+            ),
+          ),
         );
         return;
       }
@@ -138,7 +169,7 @@ export function startLocalNode(
         return;
       }
       resolve({
-        url,
+        url: ready.ui,
         token,
         home,
         onExit: (listener) => void exitListeners.push(listener),
@@ -146,17 +177,14 @@ export function startLocalNode(
       });
     };
     const onEarlyExit = (code: number | null) => {
-      child.stdout.off("data", onData);
-      child.stderr.off("data", onData);
+      child.off("message", onMessage);
       reject(new Error(`The local node exited with ${code ?? "a signal"}:\n${output.trim()}`));
     };
-    child.stdout.on("data", onData);
-    child.stderr.on("data", onData);
+    child.on("message", onMessage);
     child.once("exit", onEarlyExit);
     // A spawn that fails (a missing executable, no processes left) emits this instead of `exit`.
     child.once("error", (error) => {
-      child.stdout.off("data", onData);
-      child.stderr.off("data", onData);
+      child.off("message", onMessage);
       child.off("exit", onEarlyExit);
       reject(new Error(`The local node could not be started: ${error.message}`));
     });
