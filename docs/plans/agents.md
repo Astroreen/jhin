@@ -2567,6 +2567,15 @@ Decisions (M3):
 - **D1568. The forwarding node fills `by`.** It takes it from the call's
   thread, so an agent cannot name another one; a call without a thread, or
   from a thread that is no agent's generation, forwards no `by`.
+- **D1569. The agent form holds `userSettings`.** D1065's form
+  (`jhin.agents.form`) shows D1561's `userSettings` as a switch, "Load the
+  node user's own settings", off when unset, with a hint saying what it
+  leaves out (the node machine's user's own `CLAUDE.md`, memory, skills,
+  plugins and hooks; Claude Code only for now). A new agent with it on is
+  `agents.define` with `userSettings: true`, one with it off sends nothing;
+  an edit that turns it off is `agents.update` with `userSettings` in
+  `unset`, so the definition is back to unset rather than `false`. It is a
+  field of the existing contribution, so no id is added.
 
 ## Deferred
 
@@ -2875,8 +2884,8 @@ Decisions (M3):
 - M3: `userSettings` for Codex and OpenCode. Codex reads `~/.codex`
   (`AGENTS.md`) and OpenCode its user config whatever the turn says; leaving
   them out takes a home of their own without losing the sign-in (D1561).
-- M3: `userSettings` in Civilization's agent form (D1065); Settings edits it
-  as a field of `jhin.agents` meanwhile.
+- ~~M3: `userSettings` in Civilization's agent form (D1065); Settings edits it
+  as a field of `jhin.agents` meanwhile.~~ M3, D1569.
 - M3: the account's own connectors (Claude Code's claude.ai MCP servers)
   still reach a defined agent without user settings (D1561): they come with
   the sign-in, not from `~/.claude`.

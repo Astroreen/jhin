@@ -12,6 +12,7 @@ import {
   SelectPopup,
   SelectTrigger,
   SelectValue,
+  Switch,
   Textarea,
 } from "@jhin/ui";
 import { BotIcon } from "lucide-react";
@@ -340,6 +341,18 @@ function Form(props: { view: AgentsView; target: NodeTarget; agent: AgentRecord 
               onChange={(event) => set({ instructions: event.target.value })}
               rows={8}
               value={draft.instructions}
+            />
+          )}
+        </Field>
+        <Field
+          hint="Off, it works from its project, its instructions and its knowledge, not from what the node machine's user keeps for themselves (Claude Code's ~/.claude: CLAUDE.md, memory, skills, plugins, hooks). Claude Code only for now."
+          label="Load the node user's own settings"
+        >
+          {(id) => (
+            <Switch
+              checked={draft.userSettings}
+              id={id}
+              onCheckedChange={(checked) => set({ userSettings: checked })}
             />
           )}
         </Field>
