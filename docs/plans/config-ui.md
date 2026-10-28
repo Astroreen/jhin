@@ -288,6 +288,10 @@ rules of the form below), the decision says so.
   `threads.*`. A device whose grants name `threads.read` and
   `threads.write` only keeps its drafts to itself, as with an older node
   (its calls are refused and ignored, D486) or with the switch off (D488).
+  A token's grants never change in place (`security.md` D412), so such a
+  device gets draft sync by pairing again with "Sync drafts" ticked in the
+  pairing dialog, which lists every permission (D424). Pairing presets
+  are not in code: a code defaults to its creator's grants (D419).
 
 ## Project settings and multi-line text (W42)
 
