@@ -590,16 +590,31 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           "What host.config.get answers for every config section of this node, or for the ones named, keyed by section; each file is read once (config-ui.md D1624)",
         input: z.object({
           /** The sections to read; every section a plugin defines when absent. */
-          sections: z.array(z.string().regex(DOTTED_ID)).optional(),
+          sections: z.array(z.string().regex(DOTTED_ID)).max(1000).optional(),
         }),
         output: z.object({ sections: z.record(z.string(), ConfigRead) }),
         permissions: ["host.config.read"],
         handler: ({ sections }) => {
           const files = readFiles();
-          const names = sections ?? Object.keys(files.schemas);
+          const names =
+            sections === undefined ? Object.keys(files.schemas) : [...new Set(sections)];
           return {
             sections: Object.fromEntries(
-              names.map((section) => [section, readSection(section, files)]),
+              names.map((section) => {
+                // One section that cannot be read fails alone, as its own host.config.get would.
+                try {
+                  return [section, readSection(section, files)];
+                } catch (error) {
+                  return [
+                    section,
+                    {
+                      error: `Config section ${section} cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+                      layers: {},
+                      comments: [],
+                    },
+                  ];
+                }
+              }),
             ),
           };
         },
