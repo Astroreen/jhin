@@ -479,9 +479,14 @@ context.config.define("acme.http", Config);
   `mesh.config.patch` to its own node, which delivers the change as that
   node's version does (without `edits`, and with `unset` dropped by nodes
   older than D84).
-- Redacting secrets in `host.config.get` (see `t3-parity.md`): the page
-  hides them (D83), but they still reach the browser. A secret list item
-  moved in the JSON view takes the stored value of its new position.
+- A secret list item moved in the JSON view takes the stored value of
+  its new position: the view shows `<hidden secret>` without the address
+  `host.config.get` gives it (`security.md` D417, which redacts secrets
+  before they reach the browser). Left by W48 for after P4's rework of
+  the page (D1621–D1640).
+- A device whose grants lack `threads.drafts` (D1704) is not told why its
+  drafts stay on it: the `jhin.sync` section shows no hint when the node
+  refuses its draft calls.
 - Comments inside a changed array: an array is written whole (D476), so a
   comment between its items is lost when any item changes.
 - An explicitly empty text value for a field without

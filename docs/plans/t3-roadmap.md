@@ -754,3 +754,18 @@ app is released unsigned (`allow_unsigned`, D1482).
   by hand, a fan-out carrying a marker); `config-ui.md`'s redaction of
   secrets in `host.config.get` and the drafts' leftovers that are about
   who may read them.
+  **Done** (D1701–D1708, D1709–D1720 unused,
+  `security.md#leftovers-of-the-hardening-round-6-w48`): #327 what a device
+  issues ends with it and `workflows.run` is shell access (D1701–D1703);
+  #329 drafts need `threads.drafts`, which agents do not hold
+  (`config-ui.md` D1704); #334 a retry of a lost refresh answer (D1705);
+  #337 a marker needs a pointer, and a signing secret the store could not
+  delete is deleted later (D1706, `orchestration.md` D1707); #339
+  `lastSeenAt` written and told (D1708). Left in `security.md#deferred`: a
+  pairing proof remembered against replay and bound to its code, DPoP
+  beyond the web client, T3's per-session "Connected" dot, `refresh.json`
+  written whole, a config secret reference removed by hand, a fan-out
+  carrying a marker, a real value starting `••••••#/`; in
+  `config-ui.md#deferred`: a secret list item moved in the JSON view, left
+  for after P4's rework of the page (D1621–D1640), and a hint when draft
+  calls are refused.
