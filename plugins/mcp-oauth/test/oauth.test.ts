@@ -989,6 +989,99 @@ describe("MCP OAuth refresh tokens (security.md D1519)", () => {
     });
   });
 
+  it("answers a retry of a lost refresh answer within a minute, and drops what that answer carried (security.md D1705)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { kernel, base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    // Its answer never reached the client.
+    const lost = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(lost.status).toBe(200);
+    vi.setSystemTime(Date.now() + 60_000);
+    const retried = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(retried.status).toBe(200);
+    expect(retried.body.scope).toBe("threads.read git.read");
+    // What the lost answer carried is gone; the sign-in goes on with the retry's.
+    expect(await accepted(base, lost.body.access_token)).toBe(false);
+    expect(await accepted(base, retried.body.access_token)).toBe(true);
+    expect(await refreshWith(base, clientId, lost.body.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    expect(await accepted(base, retried.body.access_token)).toBe(true);
+    expect(await oauthClients(kernel)).toHaveLength(1);
+    const next = await refreshWith(base, clientId, retried.body.refresh_token);
+    expect(next.status).toBe(200);
+
+    // Past the minute, the spent token is a reuse again: the sign-in ends.
+    vi.setSystemTime(Date.now() + 60_001);
+    expect(await refreshWith(base, clientId, retried.body.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    expect(await accepted(base, next.body.access_token)).toBe(false);
+    expect(await oauthClients(kernel)).toEqual([]);
+  });
+
+  it("ends the sign-in for a retry that widens the scope, two retries at once, and after a revoke (security.md D1705)", async () => {
+    const wider = await startNode();
+    const signedIn = await signIn(wider.base, wider.token);
+    const spent = await refreshWith(wider.base, signedIn.clientId, signedIn.tokens.refresh_token, {
+      scope: "threads.read",
+    });
+    expect(
+      await refreshWith(wider.base, signedIn.clientId, signedIn.tokens.refresh_token, {
+        scope: "threads.read threads.write",
+      }),
+    ).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(await accepted(wider.base, spent.body.access_token)).toBe(false);
+
+    // Two retries at once: the second finds the first under way, a reuse.
+    const gated = gatedAuth();
+    const twice = await startNode(gated.definition);
+    const both = await signIn(twice.base, twice.token);
+    expect((await refreshWith(twice.base, both.clientId, both.tokens.refresh_token)).status).toBe(
+      200,
+    );
+    const held = gated.hold();
+    const retry = refreshWith(twice.base, both.clientId, both.tokens.refresh_token);
+    await held.reached;
+    expect(await refreshWith(twice.base, both.clientId, both.tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    held.release();
+    expect(await retry).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(await oauthClients(twice.kernel)).toEqual([]);
+
+    // Revoked under Authorized clients within the minute: nothing to retry.
+    const revoked = await startNode();
+    const third = await signIn(revoked.base, revoked.token);
+    expect(
+      (await refreshWith(revoked.base, third.clientId, third.tokens.refresh_token)).status,
+    ).toBe(200);
+    const [current] = await oauthClients(revoked.kernel);
+    await revoked.kernel.commands.execute("auth.clients.revoke", { id: current! });
+    expect(
+      await refreshWith(revoked.base, third.clientId, third.tokens.refresh_token),
+    ).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(await oauthClients(revoked.kernel)).toEqual([]);
+  });
+
+  it("ends the sign-in when another client retries a spent refresh token (security.md D1705)", async () => {
+    const { kernel, base, token } = await startNode();
+    const { clientId, tokens } = await signIn(base, token);
+    const { client_id: other } = (await (
+      await register(base, { client_name: "Other" })
+    ).json()) as { client_id: string };
+    const renewed = await refreshWith(base, clientId, tokens.refresh_token);
+    expect(await refreshWith(base, other, tokens.refresh_token)).toMatchObject({
+      status: 400,
+      body: { error: "invalid_grant" },
+    });
+    expect(await accepted(base, renewed.body.access_token)).toBe(false);
+    expect(await oauthClients(kernel)).toEqual([]);
+  });
+
   it("renews an expired access token, and expires 90 days after its issue", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { kernel, base, token } = await startNode();

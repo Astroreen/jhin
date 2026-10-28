@@ -664,26 +664,38 @@ export default definePlugin({
       }
       const found = refresh.find(asked.token);
       if (found.kind === "unknown") return refused("The refresh token is invalid or expired.");
-      if (found.kind === "spent") {
+      const record = found.record;
+      const scopes = asked.scopes ?? record.scopes;
+      const fits =
+        record.clientId === asked.clientId &&
+        record.resource === urls.resource &&
+        scopes.every((scope) => holdsPermission(record.scopes, scope));
+      // The answer to its spend never arrived: what it carried is dropped (D1705).
+      const from = http.clientAddress(request);
+      const lost =
+        found.kind === "spent" && fits ? refresh.retry(record, asked.clientId, from) : undefined;
+      if (found.kind === "spent" && lost === undefined) {
         // One of the two holders stole it: neither keeps the sign-in.
         context.log.warn("a spent MCP refresh token was presented again; its sign-in ends");
         await endSignIn(found.family);
         return refused("The refresh token was already used.");
       }
-      const record = found.record;
       if (record.clientId !== asked.clientId || record.resource !== urls.resource) {
         return refused("The refresh token was issued to another client.");
       }
-      const scopes = asked.scopes ?? record.scopes;
-      if (!scopes.every((scope) => holdsPermission(record.scopes, scope))) {
+      if (!fits) {
         json(response, 400, {
           error: "invalid_scope",
           error_description: "A refresh may narrow the granted scope, never widen it.",
         });
         return;
       }
+      if (lost !== undefined) {
+        context.log.info("an MCP client retried a refresh whose answer it did not get");
+        await revokeToken(lost.tokenId);
+      }
       // Spent before anything is awaited: the same token twice is a reuse.
-      refresh.spend(record.hash);
+      if (lost === undefined) refresh.spend(record.hash, from);
       const end = async (description: string) => {
         await endSignIn(record.family);
         refused(description);
@@ -691,10 +703,15 @@ export default definePlugin({
       const { clients } = (await context.commands.execute("auth.clients.list", {})) as {
         clients: { id: string }[];
       };
-      const renewed = clients.some((client) => client.id === record.tokenId);
+      // A retry renews nothing more: the token its spend renewed went with that answer.
+      const renewed = lost === undefined && clients.some((client) => client.id === record.tokenId);
       // Gone before it expired: it was revoked, and the sign-in with it. An
       // access token that expired is what a refresh is for.
-      if (!renewed && (record.tokenExpiresAt === undefined || record.tokenExpiresAt > Date.now())) {
+      if (
+        lost === undefined &&
+        !renewed &&
+        (record.tokenExpiresAt === undefined || record.tokenExpiresAt > Date.now())
+      ) {
         return end("The sign-in was revoked.");
       }
       const approverNow = await currentGrants(record.approver);

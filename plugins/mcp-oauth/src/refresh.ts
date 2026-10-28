@@ -11,6 +11,8 @@ import { z } from "@jhin/sdk";
 const REFRESH_TTL_MS = 90 * 86_400_000;
 /** Spent tokens a sign-in keeps to tell a reuse; an older one is refused as unknown. */
 const MAX_SPENT_PER_SIGN_IN = 20;
+/** How long after its spend a token may be presented again for a lost answer (D1705). */
+const RETRY_WINDOW_MS = 60_000;
 
 const RefreshRecord = z.object({
   /** SHA-256 of the token, base64url; the token itself is never kept. */
@@ -19,6 +21,10 @@ const RefreshRecord = z.object({
   family: z.string(),
   /** Used once already: presented again, it ends the sign-in. */
   spent: z.boolean(),
+  /** When it was spent; a retry of a lost answer counts from it (D1705). */
+  spentAt: z.number().optional(),
+  /** Where the spend came from, as `http.server` tells the client's address: a retry comes from there too. */
+  spentFrom: z.string().optional(),
   expiresAt: z.number(),
   clientId: z.string(),
   clientName: z.string(),
@@ -41,7 +47,7 @@ const sha256 = (value: string) => Crypto.createHash("sha256").update(value).dige
 
 export type Lookup =
   | { readonly kind: "unknown" }
-  | { readonly kind: "spent"; readonly family: string }
+  | { readonly kind: "spent"; readonly family: string; readonly record: RefreshRecord }
   | { readonly kind: "ok"; readonly record: RefreshRecord };
 
 /**
@@ -114,12 +120,47 @@ export function createRefreshStore(options: {
       const hash = sha256(token);
       const record = records.find((entry) => entry.hash === hash);
       if (record === undefined || record.expiresAt <= now()) return { kind: "unknown" };
-      return record.spent ? { kind: "spent", family: record.family } : { kind: "ok", record };
+      return record.spent
+        ? { kind: "spent", family: record.family, record }
+        : { kind: "ok", record };
     },
 
     /** Marks a token used, before anything is awaited: a second use is a reuse. */
-    spend(hash: string): void {
-      commit(records.map((record) => (record.hash === hash ? { ...record, spent: true } : record)));
+    spend(hash: string, from?: string): void {
+      const at = now();
+      commit(
+        records.map((record) =>
+          record.hash === hash
+            ? {
+                ...record,
+                spent: true,
+                spentAt: at,
+                ...(from === undefined ? {} : { spentFrom: from }),
+              }
+            : record,
+        ),
+      );
+    },
+
+    /**
+     * A spent token presented again by its client, from the address that spent
+     * it, within the window, while the
+     * token its spend issued is unused, is a retry of an answer that was lost
+     * (D1705): forgets that unused token and returns it, so its access token is
+     * revoked and the retry refreshes again. Anything else is a reuse.
+     */
+    retry(spent: RefreshRecord, clientId: string, from?: string): RefreshRecord | undefined {
+      if (spent.clientId !== clientId || spent.spentAt === undefined) return undefined;
+      if (spent.spentFrom !== from) return undefined;
+      if (now() - spent.spentAt > RETRY_WINDOW_MS) return undefined;
+      const family = records.filter((record) => record.family === spent.family);
+      const issued = family.at(-1);
+      // Issued by this spend and unused: the latest of the sign-in, right after it.
+      if (issued === undefined || issued.spent || family.at(-2)?.hash !== spent.hash) {
+        return undefined;
+      }
+      commit(records.filter((record) => record.hash !== issued.hash));
+      return issued;
     },
 
     /** Whether the sign-in still exists (a reuse ends it while a refresh is under way). */
