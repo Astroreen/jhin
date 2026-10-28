@@ -101,6 +101,11 @@ export interface Route {
   /** A part of the panel, e.g. a settings section. */
   readonly section?: string;
   /**
+   * A place inside the section, e.g. a config section of the node config page
+   * (config-ui.md D1628). Since 1.2.
+   */
+  readonly anchor?: string;
+  /**
    * The mode (D742): absent means the default mode, Threads, so every route
    * written before modes existed stays where it was.
    */

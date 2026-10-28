@@ -9,52 +9,149 @@ import { configChange } from "@jhin/host-api";
 import { HIDDEN, sectionForm, setAt } from "../src/lib/config-form.ts";
 import { Fields, SectionJson, type FieldsContext } from "../src/plugins/settings/config-fields.tsx";
 import {
+  discardQuestion,
   errorsOf,
   readBack,
   rebase,
-  useLoadedSection,
+  useLoadedSections,
   type Loaded,
+  type LoadedSections,
 } from "../src/plugins/settings/node-config.tsx";
 
-/** A node whose `host.config.get` answers wait until the test gives them. */
+/** A node older than D1624, whose `host.config.get` answers wait until the test gives them. */
 function slowNode() {
   const waiting = new Map<string, (read: unknown) => void>();
   return {
     client: {
       call: <T,>(method: string, params?: unknown) => {
+        if (method === "host.config.sections") {
+          return Promise.reject(Object.assign(new Error("no"), { code: "COMMAND_NOT_FOUND" }));
+        }
         const { section } = params as { section: string };
         expect(method).toBe("host.config.get");
         return new Promise<T>((resolve) => waiting.set(section, (read) => resolve(read as T)));
       },
     },
+    /** Whether the page asked for the section. */
+    asked: (section: string) => waiting.has(section),
     /** The node's file holds `values` for the section. */
     answer: (section: string, values: unknown) =>
       act(async () => waiting.get(section)!({ value: values, layers: { node: values } })),
   };
 }
 
-describe("the node config editor", () => {
-  it("edits the section chosen last, whatever order the node answers in", async () => {
-    const node = slowNode();
-    const editor: {
-      loaded?: ReturnType<typeof useLoadedSection>[0];
-      choose?: (section: string) => void;
-    } = {};
-    function Editor() {
-      const [section, setSection] = useState("a");
-      editor.choose = setSection;
-      [editor.loaded] = useLoadedSection(node.client, section);
-      return null;
-    }
-    const root = createRoot(document.createElement("div"));
-    act(() => root.render(<Editor />));
-    act(() => editor.choose!("b"));
+/** Renders `useLoadedSections` and hands out what it returns. */
+function mountSections(
+  client: { call: <T>(method: string, params?: unknown) => Promise<T> },
+  initial: readonly string[],
+) {
+  const editor: {
+    loaded?: LoadedSections;
+    setLoaded?: (change: (before: LoadedSections) => LoadedSections) => void;
+    setNames?: (names: readonly string[]) => void;
+    setLayer?: (layer: "node" | "project") => void;
+  } = {};
+  function Editor() {
+    const [names, setNames] = useState(initial);
+    const [layer, setLayer] = useState<"node" | "project">("node");
+    editor.setNames = setNames;
+    editor.setLayer = setLayer;
+    [editor.loaded, editor.setLoaded] = useLoadedSections(client, names, layer);
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  act(() => root.render(<Editor />));
+  return { editor, unmount: () => act(() => root.unmount()) };
+}
 
+describe("every section of the page, read at once (D1624)", () => {
+  it("reads them in one call where the node has host.config.sections", async () => {
+    const calls: string[] = [];
+    let answer: ((value: unknown) => void) | undefined;
+    const client = {
+      call: <T,>(method: string, params?: unknown) => {
+        calls.push(`${method} ${JSON.stringify(params)}`);
+        return new Promise<T>((resolve) => {
+          answer = (value) => resolve(value as T);
+        });
+      },
+    };
+    const { editor, unmount } = mountSections(client, ["a", "b"]);
+    expect(calls).toEqual(['host.config.sections {"sections":["a","b"]}']);
+    await act(async () =>
+      answer!({
+        sections: {
+          a: { layers: { node: { x: 1 }, project: { x: 2 } } },
+          b: { layers: {} },
+        },
+      }),
+    );
+    expect(editor.loaded?.["a"]).toMatchObject({ layer: "node", value: { x: 1 } });
+    expect(editor.loaded?.["b"]).toMatchObject({ value: {} });
+
+    // The other file: the same reads, each edit afresh from that file (D477).
+    act(() => editor.setLayer!("project"));
+    expect(editor.loaded?.["a"]).toMatchObject({ layer: "project", value: { x: 2 } });
+    expect(calls).toHaveLength(1);
+    unmount();
+  });
+
+  it("asks an older node for each section, showing each as it lands", async () => {
+    const node = slowNode();
+    const { editor, unmount } = mountSections(node.client, ["a", "b"]);
+    await act(async () => undefined);
+    expect(node.asked("a") && node.asked("b")).toBe(true);
     await node.answer("b", { from: "b" });
+    expect(Object.keys(editor.loaded ?? {})).toEqual(["b"]);
     await node.answer("a", { from: "a" });
-    expect(editor.loaded?.section).toBe("b");
-    expect(editor.loaded?.value).toEqual({ from: "b" });
-    act(() => root.unmount());
+    expect(editor.loaded?.["a"]?.value).toEqual({ from: "a" });
+    unmount();
+  });
+
+  it("keeps unsaved edits when the sections are read again", async () => {
+    const answers: ((value: unknown) => void)[] = [];
+    const client = {
+      call: <T,>() => new Promise<T>((resolve) => answers.push((value) => resolve(value as T))),
+    };
+    const { editor, unmount } = mountSections(client, ["a"]);
+    await act(async () => answers[0]!({ sections: { a: { layers: { node: { x: 1, y: 1 } } } } }));
+    act(() =>
+      editor.setLoaded!((before) => ({ ...before, a: { ...before["a"]!, value: { x: 2, y: 1 } } })),
+    );
+    // A section added: everything is read again, and the edit stays on top of the new file.
+    act(() => editor.setNames!(["a", "b"]));
+    expect(editor.loaded?.["a"]?.value).toEqual({ x: 2, y: 1 });
+    await act(async () =>
+      answers[1]!({ sections: { a: { layers: { node: { x: 1, y: 5 } } }, b: { layers: {} } } }),
+    );
+    expect(editor.loaded?.["a"]).toMatchObject({ value: { x: 2, y: 5 }, rebased: true });
+    unmount();
+  });
+
+  it("drops the answers for sections no longer listed", async () => {
+    const node = slowNode();
+    const { editor, unmount } = mountSections(node.client, ["a"]);
+    await act(async () => undefined);
+    act(() => editor.setNames!(["c"]));
+    await act(async () => undefined);
+    await node.answer("a", { from: "a" });
+    expect(editor.loaded).toEqual({});
+    await node.answer("c", { from: "c" });
+    expect(Object.keys(editor.loaded ?? {})).toEqual(["c"]);
+    unmount();
+  });
+});
+
+describe("the confirm that names what would be lost (D1626)", () => {
+  it("names one section, or counts and lists several", () => {
+    expect(discardQuestion(["Demo"])).toEqual({
+      title: "Discard the changes to Demo?",
+      description: "They were not saved.",
+    });
+    expect(discardQuestion(["Demo", "Threads"])).toEqual({
+      title: "Discard the changes to 2 sections?",
+      description: "Not saved: Demo, Threads.",
+    });
   });
 });
 

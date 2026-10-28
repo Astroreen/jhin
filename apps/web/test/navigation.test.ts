@@ -11,6 +11,7 @@ describe("routes in the fragment", () => {
       project: "p1",
       panel: "settings",
       section: "keybindings",
+      anchor: "jhin.web-ui",
       mode: "civilization",
     };
     expect(readRoute(`#${writeRoute(route)}`)).toEqual(route);
@@ -20,5 +21,11 @@ describe("routes in the fragment", () => {
     expect(writeRoute({ node: "a" })).toBe("n=a");
     expect(readRoute("#n=a&x=1")).toEqual({ node: "a" });
     expect(readRoute("")).toEqual({});
+  });
+
+  it("names a config section of the settings page as its anchor (config-ui.md D1628)", () => {
+    expect(writeRoute({ panel: "settings", section: "node-config", anchor: "jhin.web-ui" })).toBe(
+      "p=settings&s=node-config&a=jhin.web-ui",
+    );
   });
 });

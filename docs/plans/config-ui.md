@@ -350,11 +350,13 @@ checked-in `t3.json` and the scripts are `source-control.md`'s
 
 ## Every section on one page (P4)
 
+Status: **landed** (#326: D1621, D1624; #344: D1622, D1623, D1625–D1629).
+
 The owner asked (2026-10-24) for the node config page to stop making them
 pick one section from a dropdown and wait for it. The page shows every section
 at once, with the section list under the page's name in the settings
 navigation, and a click scrolls to the section. Decisions D1621–D1640
-(D1621–D1627 used so far); the speed part continues `loading.md`. It builds on
+(D1621–D1629 used so far); the speed part continues `loading.md`. It builds on
 W42's project scope (D1463) and must land on top of it, never undo it.
 
 - **D1621. Why one section is slow is measured before anything changes.**
@@ -382,7 +384,8 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   It is a contribution shape every settings page can use, not a node config
   special case (AGENTS.md rule 7). A click scrolls the section into view and
   focuses its heading. The entry of the section in view is marked current as
-  the page scrolls. The URL hash names the section (`#jhin.web-ui`), so a
+  the page scrolls. The URL hash names the section (`#jhin.web-ui`; as the
+  route's field `a`, D1628), so a
   link or a reload opens at it. On a narrow screen, where the navigation
   folds away, the same list is a "Jump to section" menu at the top of the
   page.
@@ -396,7 +399,8 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   lands.
 - **D1625. Sections off screen cost little.** A section's form is rendered
   when it comes near the viewport (an `IntersectionObserver` with a margin),
-  with a placeholder of its last height before that. The find of the
+  with a placeholder of its last height before that (estimated from its
+  fields for now, see Deferred). The find of the
   browser and the hash link of D1623 still reach every section: a section a
   link or a jump names is rendered first.
 - **D1626. Edits belong to their section.** Each section keeps its own
@@ -404,10 +408,32 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   only the section it covers. Choosing another node, another file (D477) or
   another project scope with unsaved edits asks once, naming the sections
   that would lose their edits. Leaving the page with unsaved edits asks the
-  same way.
+  same way (through the settings shell, D1629; other ways out are in
+  Deferred).
 - **D1627. Nothing of the form itself changes.** Fields, validation, layers,
   comments and the plugin controls stay as W16 built them. Only where the
   forms are placed and how they are loaded changes.
+- **D1628. The section is a field of the route.** The URL fragment already
+  holds the route (`#p=settings&s=node-config`), so D1623's hash is its new
+  field `a` (`Route.anchor`, `client.navigation@1.2`): `#p=settings&s=node-config&a=jhin.web-ui`.
+  Opening another settings section or leaving the settings page drops it.
+  A jump and the section in view replace the history entry rather than add
+  one, so Back leaves the page as before.
+- **D1629. A settings page contributes an outline.** `ui.settings@1.1`
+  adds `setOutline(section, outline)` (a disposable): `entries` (`{ id,
+  label, hint? }`, ids `<section>/<name>`), the `current` entry, `select(id)`
+  and an optional `confirmLeave()`. While the page is open, the settings
+  shell lists the entries under its navigation item and in the narrow
+  "Jump to section" menu, marks `current`, keeps the route's `anchor` in step
+  with it, selects the anchor's entry once when the outline arrives, and asks
+  `confirmLeave()` before it opens another section or closes the settings
+  (its navigation, Back, Escape). A page calls `setOutline` again as its
+  current entry changes; the latest call wins. The node config page is its
+  first user (D1623, D1626); a reload or a closed tab with unsaved edits gets
+  the browser's own question (`beforeunload`). A section waiting off screen
+  (D1625) keeps its field titles and descriptions in a `hidden="until-found"`
+  block, so the browser's find reaches them and renders the section when it
+  matches (`beforematch`).
 
 ## How to write a config schema (for plugin authors)
 
@@ -483,6 +509,18 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
+- Leaving the node config page other than through the settings shell does
+  not ask about unsaved edits (D1626, D1629): the browser's Back and Forward
+  (a fragment change, so no `beforeunload` either), a hand-edited URL, a
+  thread or the node switcher in the sidebar, `settings.open` from the
+  palette. Only the shell's navigation, its Back button, Escape, and a reload
+  or closed tab (`beforeunload`) ask. Guarding them needs a way to refuse a
+  route change in `client.navigation`.
+- A section waiting off screen guesses its height from its fields rather than
+  its last rendered height (D1625): a rendered section stays rendered, so it
+  has no last height until the page is opened again. A jump can therefore land a
+  little off its section when sections above it render with another height;
+  the browser's scroll anchoring keeps most of it in place.
 - A fan-out through a connected node older than D475: the page sends
   `mesh.config.patch` to its own node, which delivers the change as that
   node's version does (without `edits`, and with `unset` dropped by nodes
