@@ -23,7 +23,7 @@ import {
 } from "@jhin/ui";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckIcon, ChevronDownIcon, GlobeIcon, LockIcon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { forgeIcon } from "./forge-icons.tsx";
 
@@ -74,12 +74,15 @@ export function PublishRepositoryDialog(props: {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PublishedRepository | null>(null);
+  const attempts = useRef(0);
   const current = PUBLISH_FORGES.find((item) => item.value === forge) ?? PUBLISH_FORGES[0]!;
   const Mark = forgeIcon({ kind: forge });
   const [owner = "", ...rest] = repository.trim().split("/");
   const canSubmit = !pending && owner.trim() !== "" && rest.join("/").trim() !== "";
 
   const reset = () => {
+    attempts.current += 1;
+    setPending(false);
     setRemoteName("origin");
     setRepository("");
     setStep(0);
@@ -95,6 +98,9 @@ export function PublishRepositoryDialog(props: {
     if (!canSubmit) return;
     setError(null);
     setPending(true);
+    // A result that arrives after the dialog was closed is not shown as a stale summary.
+    const attempt = ++attempts.current;
+    const current = () => attempt === attempts.current;
     props
       .publish({
         forge,
@@ -105,13 +111,18 @@ export function PublishRepositoryDialog(props: {
       })
       .then(
         (published) => {
+          if (!current()) return;
           setResult(published);
           setStep(2);
         },
-        (failure: unknown) =>
-          setError(failure instanceof Error ? failure.message : "An error occurred."),
+        (failure: unknown) => {
+          if (current())
+            setError(failure instanceof Error ? failure.message : "An error occurred.");
+        },
       )
-      .finally(() => setPending(false));
+      .finally(() => {
+        if (current()) setPending(false);
+      });
   };
 
   return (

@@ -802,6 +802,27 @@ describe("git.publish (D1667)", () => {
     );
   });
 
+  it("refuses a detached HEAD and a remote name read as an option before the forge is asked", async () => {
+    const gh = fakeCli("gh");
+    const dir = repository();
+    git(dir, "checkout", "--quiet", "--detach");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const publish = (extra: Record<string, unknown> = {}) =>
+      sc.client.call("git.publish", {
+        projectId,
+        forge: "github",
+        repository: "me/demo",
+        visibility: "private",
+        ...extra,
+      });
+    await expect(publish()).rejects.toThrow("Cannot push from detached HEAD.");
+    await expect(publish({ remoteName: "--upload-pack=x" })).rejects.toThrow(
+      "Invalid input for git.publish",
+    );
+    expect(gh.calls()).toEqual([]);
+  });
+
   it("says what it did when the push fails, in T3's words", async () => {
     const gh = fakeCli("gh");
     gh.answer("api user", { login: "me" });

@@ -1972,7 +1972,8 @@ the quick action's "Publish repository").
   and for Repository conventions the 20 latest non-merge commit subjects,
   the repository's `AGENTS.md` and, when the writer agent is Claude, its
   `CLAUDE.md` (each at most 20 KB and inside the repository, as T3 reads
-  them). With `followChangeRequestTemplates` off the repository's pull
+  them; the instructions as a whole are cut at 20,000 characters, as T3's
+  `policyInstruction` cuts them). With `followChangeRequestTemplates` off the repository's pull
   request template is not handed to the writer.
 - **D1667. `git.publish`** (`git.write`; `{ projectId, forge, repository,
   visibility, remoteName?, protocol? }` → `{ repository: { nameWithOwner,
@@ -1985,7 +1986,8 @@ the quick action's "Publish repository").
   already points there), and the current branch is pushed with `-u`
   (`pushed`); a repository without commits gets the remote alone
   (`remote_added`). A push that fails says T3's words with the remote it
-  added. The other forges' `createRepository` are Deferred.
+  added. A detached `HEAD` and a remote name git would read as an option are
+  refused before the forge is asked. The other forges' `createRepository` are Deferred.
 - **D1668. T3's "Publish repository" in the git actions.** A repository
   without an upstream and without a remote gets T3's quick action "Publish
   repository" instead of the disabled Push, which opens T3's dialog
@@ -2100,7 +2102,9 @@ the quick action's "Publish repository").
   agent credits from a merge's message (`removeAgentCreditsOnMerge`); and
   the review decision off GitHub (T3 has none either).
 - Git actions (D266; writing style and "Publish repository" since D1666–D1668):
-  publishing to Azure DevOps, Bitbucket and Forgejo, T3's "Setup Required"
+  publishing to Azure DevOps, Bitbucket and Forgejo, a repository the
+  forge created before a local step failed (it stays, as in T3; a retry
+  says it exists), T3's "Setup Required"
   provider cards and the account prefilled in the repository field (both
   need T3's forge discovery), a dedicated writer model per project
   (`sourceControlWriterModelSelection`), the thread details panel and

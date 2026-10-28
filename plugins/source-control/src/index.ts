@@ -4358,7 +4358,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       forge: z.enum(PUBLISH_FORGES),
       repository: z.string().trim().min(1),
       visibility: z.enum(["private", "public"]),
-      remoteName: z.string().trim().min(1).optional(),
+      // A remote's name as git allows it, never one read as an option.
+      remoteName: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9_][A-Za-z0-9._-]*$/, "Not a valid remote name.")
+        .optional(),
       protocol: z.enum(["ssh", "https"]).optional(),
     }),
     output: PublishedRepository,
@@ -4367,6 +4372,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const repo = await repoOf(projectId);
       return exclusive(projectId, async () => {
         const { git, root } = await gitOf(repo);
+        // Checked before the forge creates anything: a detached HEAD has no branch to publish.
+        const branch = (
+          await git(["symbolic-ref", "--quiet", "--short", "HEAD"], { ok: [0, 1, 128] })
+        ).stdout.trim();
+        if (branch === "") {
+          throw new SourceControlError("ACTION_UNAVAILABLE", "Cannot push from detached HEAD.", {
+            projectId,
+          });
+        }
         let urls;
         try {
           urls = await createRepository(
@@ -4379,18 +4393,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         }
         const remoteUrl = protocol === "https" ? urls.httpsUrl : urls.sshUrl;
         const name = await ensureRemote(git, remoteName ?? "origin", remoteUrl);
-        const branch = (
-          await git(["symbolic-ref", "--quiet", "--short", "HEAD"], { ok: [0, 1, 128] })
-        ).stdout.trim();
         const published = {
           repository: { nameWithOwner: urls.nameWithOwner, url: urls.url },
           remoteName: name,
           remoteUrl,
-          branch: branch || "main",
+          branch,
         };
         // A repository without commits has nothing to push yet: the remote is set up alone.
         const head = await git(["rev-parse", "--verify", "--quiet", "HEAD"], { ok: [0, 1, 128] });
-        if (head.code !== 0 || branch === "") {
+        if (head.code !== 0) {
           await refresh(repo).catch(() => undefined);
           return { ...published, status: "remote_added" as const };
         }
