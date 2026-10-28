@@ -2738,7 +2738,7 @@ why nothing moved, and took Server down for seven minutes mid-mission.
   lacked D1561, though item 1 built on it. The lead found this and asked;
   the owner chose to merge the unmerged branch in. A run's checkout must hold
   what its missions build on, and the owner set it up without that. The
-  crew's commits landed through #353, cherry-picked onto the M3 fixes, so
+  crew's commits landed through #355, cherry-picked onto the M3 fixes, so
   their merge commit is not in history. Health credited the lead's commits to
   whichever turn overlapped them in the shared checkout: the builder's on
   Laptop, and the reviewer's on Server as well, which counted one commit on
@@ -3275,3 +3275,13 @@ Each workstream lists its PRs here as they merge.
   woken at once, health's `away` warning that clears itself, inbox items of
   an away sender (`SENDER_AWAY`), all read from M1's `members()`
   (D1547–D1551).
+- M3 #331: a defined agent works without the node user's own settings
+  (`userSettings`, `agent.runtime@1.16`, D1561).
+- M3 #333: a wave's slices for one assignee in one message
+  (`slices.handoff.together`, D1562).
+- M3 #338: C3's scenario on two nodes, in process and with the UI (D1563).
+- M3 #341: an away warning names the node by its mesh name (D1564).
+- M3 #352: a wave nobody works on wakes the lead (`idle`), the reviewer
+  proves its review slice and tells the lead every verdict (D1575–D1577).
+- M3 #355: the M3 run's crew's six items (D1565, D1567–D1572), the M3 run
+  note and the lore story "nobody's turn".
