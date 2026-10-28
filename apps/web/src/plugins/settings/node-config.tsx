@@ -83,6 +83,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const PAGE = "node-config";
 /** The element of a config section on the page; the route's anchor names the section (D1628). */
 const domId = (section: string) => `${PAGE}-${section}`;
+/** Keys that scroll the page: pressed by the user, they end a jump's pin (D1623). */
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 /** How far outside the viewport a section starts rendering (D1625). */
 const NEAR_MARGIN = "600px 0px";
 
@@ -446,10 +448,9 @@ function ConfigPage({
 
   const titleOf = (section: string) =>
     names?.find((item) => item.name === section)?.title ?? section;
-  const editedSections = (names ?? [])
-    .filter((item) => isEdited(loaded[item.name]))
-    .map((item) => item.title);
-  const editedKey = editedSections.join("\n");
+  const editedItems = (names ?? []).filter((item) => isEdited(loaded[item.name]));
+  const editedSections = editedItems.map((item) => item.title);
+  const editedKey = editedItems.map((item) => item.name).join("\n");
   useEffect(() => onEdited(editedSections), [editedKey]);
   // Gone (another node chosen, or this one disconnected): nothing of it is unsaved.
   useEffect(() => () => onEdited([]), []);
@@ -461,15 +462,23 @@ function ConfigPage({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [editedKey]);
 
+  /** A confirm is open: a second one answers no, so two quick clicks ask once. */
+  const confirming = useRef(false);
   /** Whether unsaved edits may go: they are none, or the user gives them up (D1626). */
-  const discard = async () =>
-    editedSections.length === 0 ||
-    dialogs === undefined ||
-    (await dialogs.confirm({
-      ...discardQuestion(editedSections),
-      confirmLabel: "Discard",
-      variant: "destructive",
-    }));
+  const discard = async () => {
+    if (editedSections.length === 0) return true;
+    if (confirming.current) return false;
+    confirming.current = true;
+    try {
+      const question = discardQuestion(editedSections);
+      // Without the dialogs service, the browser's own confirm: edits never go unasked.
+      return dialogs === undefined
+        ? window.confirm(`${question.title}\n${question.description}`)
+        : await dialogs.confirm({ ...question, confirmLabel: "Discard", variant: "destructive" });
+    } finally {
+      confirming.current = false;
+    }
+  };
   const discardRef = useRef(discard);
   discardRef.current = discard;
 
@@ -503,9 +512,18 @@ function ConfigPage({
   };
   const selectRef = useRef(select);
   selectRef.current = select;
+  /** The latest outline: a later `setOutline` replaces it, so a scroll never leaves a gap. */
+  const outlined = useRef<{ dispose(): void } | undefined>(undefined);
+  useEffect(
+    () => () => {
+      outlined.current?.dispose();
+      outlined.current = undefined;
+    },
+    [pages, namesKey],
+  );
   useEffect(() => {
     if (pages?.setOutline === undefined || names === undefined) return;
-    const registration = pages.setOutline(PAGE, {
+    outlined.current = pages.setOutline(PAGE, {
       entries: names.map((item) => ({
         id: `${PAGE}/${item.name}`,
         label: item.title,
@@ -515,7 +533,6 @@ function ConfigPage({
       select: (id) => selectRef.current(id),
       confirmLeave: () => discardRef.current(),
     });
-    return () => registration.dispose();
   }, [pages, namesKey, inView]);
 
   // A jump: once the section is rendered, it comes into view and its heading takes focus.
@@ -570,19 +587,27 @@ function ConfigPage({
     const onScroll = () => {
       frame ??= requestAnimationFrame(spy);
     };
-    const unpin = () => {
+    // Only the user's own scrolling ends a jump's pin: a wheel, a touch, a key that scrolls
+    // outside a field. Typing, Tab and clicks leave it.
+    const unpin = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        if (!SCROLL_KEYS.has(event.key)) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("input, textarea, select, [contenteditable=true], [role=combobox]"))
+          return;
+      }
       pinned.current = undefined;
     };
     const target: HTMLElement | Window = root ?? window;
     target.addEventListener("scroll", onScroll, { passive: true });
-    for (const kind of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+    for (const kind of ["wheel", "touchstart", "keydown"]) {
       target.addEventListener(kind, unpin, { passive: true });
     }
     spy();
     return () => {
       near.disconnect();
       target.removeEventListener("scroll", onScroll);
-      for (const kind of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+      for (const kind of ["wheel", "touchstart", "keydown"]) {
         target.removeEventListener(kind, unpin);
       }
       if (frame !== undefined) cancelAnimationFrame(frame);

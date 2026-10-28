@@ -531,6 +531,20 @@ test("D1463: T3's project scope edits a project's own settings, showing what it 
       section: "jhin.source-control",
     });
   expect(reset.layers.node?.["projects"]).toBeUndefined();
+
+  // Another project scope with unsaved edits asks first, naming the section (D1626).
+  await naming.click();
+  await page.getByRole("option", { name: "Custom instructions", exact: true }).click();
+  const chooseAll = async () => {
+    await page.getByRole("button", { name: "Project scope: acme" }).click();
+    await page.getByRole("menuitemradio", { name: "All projects" }).click();
+    return page.getByRole("alertdialog", { name: "Discard the changes to Source control?" });
+  };
+  await (await chooseAll()).getByRole("button", { name: "Cancel" }).click();
+  await expect(naming).toHaveText(/Custom instructions/);
+  await (await chooseAll()).getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByRole("button", { name: "Project scope: All projects" })).toBeVisible();
+  await expect(save).toBeDisabled();
 });
 
 test("D1622–D1626: every section on one page, jumped to from the navigation, edits kept and named", async ({

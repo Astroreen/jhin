@@ -504,10 +504,13 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
-- Leaving the node config page other than through the settings shell (a
-  thread in the sidebar, `settings.open` from the palette) does not ask about
-  unsaved edits (D1626, D1629); only the shell's navigation, Back, Escape and
-  a reload or closed tab (`beforeunload`) do.
+- Leaving the node config page other than through the settings shell does
+  not ask about unsaved edits (D1626, D1629): the browser's Back and Forward
+  (a fragment change, so no `beforeunload` either), a hand-edited URL, a
+  thread or the node switcher in the sidebar, `settings.open` from the
+  palette. Only the shell's navigation, its Back button, Escape, and a reload
+  or closed tab (`beforeunload`) ask. Guarding them needs a way to refuse a
+  route change in `client.navigation`.
 - A section waiting off screen guesses its height from its fields rather than
   its last rendered height (D1625): a rendered section stays rendered, so it
   has no last height until the page is opened again.
