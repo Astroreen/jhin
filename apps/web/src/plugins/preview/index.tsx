@@ -878,6 +878,9 @@ export const previewPanelPlugin = builtin(
         setActiveTab,
         focusUrlRequests,
         call: (method, params) => threads.call(target, method, params),
+        // The node's own client, for its pushed local servers (D1692); a member's is polled.
+        client: () =>
+          target.remote === undefined ? connections.get(target.node)?.client : undefined,
         shortcut,
         onError,
         useFloatingTab: (panelKey) => useExternal(players, () => players.get(panelKey)?.tabId),

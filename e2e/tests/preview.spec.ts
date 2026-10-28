@@ -233,6 +233,39 @@ test("D950: a server a terminal started shows under Local servers and opens", as
   }
 });
 
+test("D1692: the node pushes a server that starts while the panel shows, without the panel polling", async ({
+  page,
+}) => {
+  // What the page sends its node: a subscription to the servers stream, no list calls.
+  const sent: string[] = [];
+  page.on("websocket", (socket) =>
+    socket.on("framesent", (frame) => {
+      if (typeof frame.payload === "string") sent.push(frame.payload);
+    }),
+  );
+  const threadId = await startThread(page, "watch servers");
+  const panel = await openSurface(page, "Browser");
+  await expect(panel.getByText("No preview yet")).toBeVisible();
+  const terminal = { threadId, terminalId: "pushed-server" };
+  await node.client().call("terminals.open", { ...terminal, cwd: node.home });
+  try {
+    const script =
+      "require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');" +
+      "s.end('<title>Pushed</title><h1>pushed</h1>')}).listen(0,'127.0.0.1')";
+    await node.client().call("terminals.write", {
+      ...terminal,
+      data: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}\r`,
+    });
+    // The node's next scan finds it and pushes the list to the open panel.
+    const servers = panel.getByRole("region", { name: "Local servers" });
+    await expect(servers.getByRole("button", { name: /^\S+ localhost:\d+$/ })).toBeVisible();
+    expect(sent.some((payload) => payload.includes('"preview-servers/'))).toBe(true);
+    expect(sent.some((payload) => payload.includes("preview.servers.list"))).toBe(false);
+  } finally {
+    await node.client().call("terminals.close", terminal);
+  }
+});
+
 test("D953: a profile made in the settings opens a tab of its own, marked with its name", async ({
   page,
 }, info) => {

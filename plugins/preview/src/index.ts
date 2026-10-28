@@ -8,6 +8,7 @@ import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { TERMINAL_SESSIONS_CAPABILITY, type TerminalSessions } from "@jhin/terminal-api";
 import {
   PREVIEW_BROWSER_CAPABILITY,
+  PREVIEW_SERVERS_STREAM_PREFIX,
   PREVIEW_STREAM_PREFIX,
   PreviewClickInput,
   PreviewCloseInput,
@@ -84,6 +85,7 @@ import {
   normalizeConfiguredUrls,
 } from "./local-servers.ts";
 import { createHeadlessShell, headlessShellRelease } from "./headless-shell.ts";
+import { createServerWatch, SERVER_WATCH_INTERVAL_MS } from "./server-watch.ts";
 
 /** How long one local server scan answers every panel (D950). */
 const SCAN_REUSE_MS = 2_000;
@@ -246,6 +248,47 @@ export default definePlugin({
         readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
       }
     >();
+    /** The servers for these configured URLs, from a scan shared by every caller meanwhile. */
+    const listServers = (
+      configuredUrls: readonly string[],
+    ): Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }> => {
+      const configured = JSON.stringify(normalizeConfiguredUrls(configuredUrls).toSorted());
+      // A scan still running is shared however long it takes; a finished one for 2 s.
+      const known = scans.get(configured);
+      if (
+        known !== undefined &&
+        (known.finishedAt === undefined || Date.now() - known.finishedAt < SCAN_REUSE_MS)
+      ) {
+        return known.result;
+      }
+      // Scans long done go: the map stays as small as the sets panels ask with.
+      for (const [key, scan] of scans) {
+        if (scan.finishedAt !== undefined && Date.now() - scan.finishedAt >= SCAN_REUSE_MS) {
+          scans.delete(key);
+        }
+      }
+      const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+      const owners = new Map<number, { threadId: string; terminalId: string }>();
+      for (const terminal of terminals?.list() ?? []) {
+        for (const pid of terminals?.processIds?.(terminal.threadId, terminal.terminalId) ?? []) {
+          owners.set(pid, { threadId: terminal.threadId, terminalId: terminal.terminalId });
+        }
+      }
+      const result = scanner
+        .scan(owners, configuredUrls)
+        .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
+      const scan: { finishedAt?: number; result: typeof result } = { result };
+      scans.set(configured, scan);
+      void result.then(
+        () => (scan.finishedAt = Date.now()),
+        () => undefined,
+      );
+      // A failed scan is not reused.
+      result.catch(() => {
+        if (scans.get(configured) === scan) scans.delete(configured);
+      });
+      return result;
+    };
     context.commands.register({
       name: "preview.servers.list",
       title: "List local servers",
@@ -257,46 +300,26 @@ export default definePlugin({
       output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
       // It tells which threads' terminals run what: reading terminals is asked for too.
       permissions: [...read, "terminals.read"],
-      // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
-      handler: ({ configuredUrls = [] }) => {
-        const configured = JSON.stringify(normalizeConfiguredUrls(configuredUrls).toSorted());
-        // A scan still running is shared however long it takes; a finished one for 2 s.
-        const known = scans.get(configured);
-        if (
-          known !== undefined &&
-          (known.finishedAt === undefined || Date.now() - known.finishedAt < SCAN_REUSE_MS)
-        ) {
-          return known.result;
-        }
-        // Scans long done go: the map stays as small as the sets panels ask with.
-        for (const [key, scan] of scans) {
-          if (scan.finishedAt !== undefined && Date.now() - scan.finishedAt >= SCAN_REUSE_MS) {
-            scans.delete(key);
-          }
-        }
-        const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
-        const owners = new Map<number, { threadId: string; terminalId: string }>();
-        for (const terminal of terminals?.list() ?? []) {
-          for (const pid of terminals?.processIds?.(terminal.threadId, terminal.terminalId) ?? []) {
-            owners.set(pid, { threadId: terminal.threadId, terminalId: terminal.terminalId });
-          }
-        }
-        const result = scanner
-          .scan(owners, configuredUrls)
-          .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
-        const scan: { finishedAt?: number; result: typeof result } = { result };
-        scans.set(configured, scan);
-        void result.then(
-          () => (scan.finishedAt = Date.now()),
-          () => undefined,
-        );
-        // A failed scan is not reused.
-        result.catch(() => {
-          if (scans.get(configured) === scan) scans.delete(configured);
-        });
-        return result;
-      },
+      // Panels of older clients ask every 3 s: one scan serves them all for a while.
+      handler: ({ configuredUrls = [] }) => listServers(configuredUrls),
     });
+    // The list pushed to the panels that watch it (D1692): the node scans while one does.
+    const serverWatch = createServerWatch({
+      list: listServers,
+      every: (tick) => {
+        const timer = setInterval(() => void tick(), SERVER_WATCH_INTERVAL_MS);
+        return toDisposable(() => clearInterval(timer));
+      },
+      warn: (message, fields) => context.log.warn(message, fields),
+    });
+    context.subscriptions.add(serverWatch);
+    if (live !== undefined) {
+      context.subscriptions.add(
+        live.serve(PREVIEW_SERVERS_STREAM_PREFIX, serverWatch, {
+          permissions: [...read, "terminals.read"],
+        }),
+      );
+    }
     context.commands.register({
       name: "preview.status",
       title: "Get preview status",

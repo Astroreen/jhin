@@ -30,6 +30,33 @@ export const previewFramesStream = (threadId: string, tabId: string): string =>
  */
 export const PREVIEW_DESKTOP_STREAM = "preview-desktop";
 
+/**
+ * The node's local servers, pushed while somebody watches (docs/plans/preview.md, D1692):
+ * one `preview.servers` event after every change, for the configured URLs the name carries.
+ */
+export const PREVIEW_SERVERS_STREAM_PREFIX = "preview-servers/";
+
+/** The stream of the servers a panel shows for these configured URLs (D1480), in any order. */
+export const previewServersStream = (configuredUrls: readonly string[] = []): string =>
+  `${PREVIEW_SERVERS_STREAM_PREFIX}${encodeURIComponent(JSON.stringify([...new Set(configuredUrls)].toSorted()))}`;
+
+/** The configured URLs a servers stream carries; undefined for a name that is not one. */
+export function previewServersStreamUrls(stream: string): string[] | undefined {
+  if (!stream.startsWith(PREVIEW_SERVERS_STREAM_PREFIX)) return undefined;
+  try {
+    const urls: unknown = JSON.parse(
+      decodeURIComponent(stream.slice(PREVIEW_SERVERS_STREAM_PREFIX.length)),
+    );
+    return Array.isArray(urls) &&
+      urls.length <= 50 &&
+      urls.every((url) => typeof url === "string" && url.length <= 2048)
+      ? (urls as string[])
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const PreviewEvents = {
   /** `{ tabs }`: every tab of the thread after a change. */
   tabs: "preview.tabs",
@@ -41,6 +68,8 @@ export const PreviewEvents = {
   download: "preview.download",
   /** `{ tabs }`: every tab the desktop app hosts or should host (`PreviewDesktopTab`, D1321). */
   desktopTabs: "preview.desktop.tabs",
+  /** `{ servers, scannedAt }`: the node's local servers after a change (D1692). */
+  servers: "preview.servers",
 } as const;
 
 /** Error codes of the browser commands, one per error tag of T3's. */
