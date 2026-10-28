@@ -27,18 +27,22 @@ describe("readConfigSections (config-ui.md D1624)", () => {
   it("asks an older node for each section, all in flight together, each landing as it answers", async () => {
     const asked: string[] = [];
     const answers = new Map<string, (read: ConfigRead) => void>();
+    let allAsked: () => void = () => undefined;
+    const everyAsked = new Promise<void>((resolve) => {
+      allAsked = resolve;
+    });
     const call: ConfigCall = (method, params) => {
       if (method === "host.config.sections") return Promise.reject(notFound());
       const section = params["section"] as string;
       asked.push(section);
+      if (asked.length === 3) allAsked();
       if (section === "c") return Promise.reject(new Error("no access"));
       return new Promise((resolve) => answers.set(section, resolve));
     };
     const landed: string[] = [];
     const reading = readConfigSections(call, ["a", "b", "c"], (section) => landed.push(section));
     // Every get is sent before any answers.
-    await Promise.resolve();
-    await Promise.resolve();
+    await everyAsked;
     expect(asked).toEqual(["a", "b", "c"]);
     answers.get("b")?.(readOf("b"));
     answers.get("a")?.(readOf("a"));

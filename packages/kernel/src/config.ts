@@ -60,6 +60,15 @@ export function parseConfigText(text: string, source = "config"): Values {
   return value;
 }
 
+/** `value` and everything in it frozen: a shared JSON Schema cannot be changed by one reader. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const item of Object.values(value)) deepFreeze(item);
+  }
+  return value;
+}
+
 /** A comment written directly above a key of a config file. */
 export interface ConfigComment {
   /** The key's path inside its section; `[]` for the section's own key. */
@@ -233,14 +242,16 @@ export class ConfigRegistry {
 
   /**
    * JSON Schema of the whole config, assembled from every defined section.
-   * Each section's schema is converted once and shared between calls: read it, never change it.
+   * Each section's schema is converted once and shared between calls, frozen.
    */
   jsonSchema(): unknown {
     const properties: Values = {};
     for (const [section, entry] of [...this.#sections.entries()].toSorted(([a], [b]) =>
       a.localeCompare(b),
     )) {
-      entry.json ??= z.toJSONSchema(entry.schema, { io: "input", unrepresentable: "any" });
+      entry.json ??= deepFreeze(
+        z.toJSONSchema(entry.schema, { io: "input", unrepresentable: "any" }),
+      );
       properties[section] = entry.json;
     }
     return { type: "object", properties };

@@ -181,6 +181,9 @@ describe("config", () => {
       ];
     const converted = sectionOf();
     expect(sectionOf()).toBe(converted);
+    // Shared, so frozen: one reader cannot change it for the next.
+    expect(Object.isFrozen(converted)).toBe(true);
+    expect(Object.isFrozen((converted as { properties: object }).properties)).toBe(true);
     first.dispose();
     context.config.define("app.server", z.object({ other: z.string().default("x") }));
     expect(sectionOf()).toMatchObject({ properties: { other: { default: "x" } } });
