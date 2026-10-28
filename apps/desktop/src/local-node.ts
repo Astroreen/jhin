@@ -113,11 +113,21 @@ export function startLocalNode(
   const stop = async () => {
     stopping = true;
     if (child.exitCode !== null || child.signalCode !== null) return;
-    try {
-      if (!child.connected) throw new Error("no channel");
-      child.send({ type: SERVE_STOP });
-    } catch {
-      child.kill("SIGTERM");
+    const terminate = () => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    };
+    // A channel that fails now or while the message goes out falls back to the signal; the
+    // callback keeps such a failure from being an unhandled `error` event.
+    if (child.connected) {
+      try {
+        child.send({ type: SERVE_STOP }, (error) => {
+          if (error) terminate();
+        });
+      } catch {
+        terminate();
+      }
+    } else {
+      terminate();
     }
     // A node stuck in its plugins' dispose must not keep the app from quitting.
     const cancel = scheduleKill(() => child.kill("SIGKILL"));

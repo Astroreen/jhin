@@ -46,4 +46,23 @@ describe("jhin serve with an IPC channel (desktop.md D1687, D1688)", () => {
       expect(await exited).toBe(0);
     },
   );
+
+  it("stops when its parent goes away: the channel closes", { timeout: 60_000 }, async () => {
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-serve-ipc-"));
+    Fs.mkdirSync(Path.join(home, ".jhin"));
+    Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+    const serve = ChildProcess.spawn(
+      process.execPath,
+      [BIN, "serve", "--home", home, "--cwd", home],
+      { stdio: ["ignore", "ignore", "ignore", "ipc"] },
+    );
+    const exited = new Promise<number | null>((resolve) => serve.once("exit", resolve));
+    await new Promise<void>((resolve) =>
+      serve.on("message", (message) => {
+        if ((message as { type?: unknown }).type === SERVE_READY) resolve();
+      }),
+    );
+    serve.disconnect();
+    expect(await exited).toBe(0);
+  });
 });
