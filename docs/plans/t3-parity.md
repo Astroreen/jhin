@@ -2583,8 +2583,8 @@ steer a Claude Code turn ended before it took go with them.
   `RightPanelTab` gets `pending` (`ui.right-panel@1.1`, additive), which the
   strip draws as T3's `RightPanelTabs` does.
 - **D1646. "Read-only connection",** T3's notice in `FilePreviewPanel`. A
-  write the node refuses for want of permission (`FORBIDDEN`, a token
-  without `projects.write`) turns the file read-only: T3's notice
+  write the node refuses for want of permission (`PERMISSION_DENIED`, a
+  token without `projects.write`) turns the file read-only: T3's notice
   "Read-only connection. Unsaved edits are kept until write access
   returns." shows above it, the text stays as typed, and nothing is written
   until the connection to that node changes (a new token or a reconnect),
@@ -2592,10 +2592,13 @@ steer a Claude Code turn ended before it took go with them.
   own permissions before writing; asking first waits for one (Deferred).
 - **D1647. A change made on disk while a file is open,** as T3 does it:
   there is no merge. While the file has no unsaved change, the editor takes
-  the text on disk whenever it changes (an agent's edit, a turn's end, the
-  node's file events), so it never writes over a change it did not show;
-  while a change waits, the editor keeps its own text and its write wins, as
-  in T3, whose write carries no version either.
+  the text on disk whenever the panel reads it again: when a turn of a
+  thread working in the same folder (the project's, or the worktree's)
+  starts or ends, as T3's `useWorkspaceMutationRefresh` reads again after an
+  agent's work, and after each of its own writes. So it never writes over a
+  change it was shown; while a change waits nothing is read, and the
+  editor's write wins, as in T3, whose write carries no version either. A
+  change missed while waiting is read once the change is written.
 - **D1648. Ticking a rendered markdown's task boxes,** T3's
   `setMarkdownTaskChecked`. In the file panel a project's rendered markdown
   file has its `- [ ]` boxes enabled ("Toggle task"): a tick swaps the one
@@ -2690,10 +2693,17 @@ steer a Claude Code turn ended before it took go with them.
     editor opening at the quote's place in the message right after "Cite",
     "Save and send" (Mod+Enter), the quote highlighted after its thread
     opens from another one, and the legacy text for a node from before D1010;
-  - T3's file panel beyond D1342, D1428–D1439 and D1641–D1644: the
-    editor's pending dot on its tab, its "Read-only connection" notice, a
-    change made on disk while it is edited, and ticking a rendered
-    markdown's task boxes; the explorer's "Reveal in …" and a chip's
+  - T3's file panel beyond D1342, D1428–D1439 and D1641–D1648: a change
+    made on disk by something other than a turn (a terminal, an editor) is
+    read only at a turn's start or end or on reopening the file (Jhin's
+    node watches files for source control only, and its events are that
+    plugin's own); T3 reads again after each file change inside a turn too;
+    edits kept on a read-only connection (D1646) are written again only by
+    an open file panel, so a closed tab keeps its dot and its draft until
+    the file opens again; a write that fails for another reason is
+    written again with the next change only (as T3's coordinator, which
+    retries nothing by itself);
+    the explorer's "Reveal in …" and a chip's
     "Preview media" and "Open in integrated browser" (T3 has them, D1642
     and D1643 leave them out); the explorer reads `editors.list` once per
     mount;

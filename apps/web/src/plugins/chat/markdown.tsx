@@ -1,5 +1,6 @@
 // The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx
-// (a file chip's menu and ⌘/Ctrl-click from its MarkdownFileLink) and apps/web/src/editorLabels.ts.
+// (a file chip's menu and ⌘/Ctrl-click from its MarkdownFileLink, a task box ticked from its
+// MarkdownListItem and MarkdownInput) and apps/web/src/editorLabels.ts.
 import {
   type AgentSkill,
   type AssistantCitation,
@@ -21,6 +22,7 @@ import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 import {
   Children,
   cloneElement,
+  createContext,
   isValidElement,
   use,
   useEffect,
@@ -38,6 +40,7 @@ import { fileLinkPath, inlineSkillTokens } from "../../lib/composer-trigger.ts";
 import { skillDisplayName } from "../../lib/composer-menu.ts";
 import { highlight, languageOf } from "../../lib/highlight.ts";
 import { useCopy } from "../../lib/hooks.ts";
+import { findTaskListMarkerOffset } from "../../lib/markdown-tasks.ts";
 import { MessageCitationChip } from "./citation-chips.tsx";
 import { ContextRecordChip } from "./context-chips.tsx";
 import { FileMentionChip, MessageSkillChip } from "./file-chips.tsx";
@@ -212,11 +215,44 @@ const COMPONENTS: Components = {
       </p>
     );
   },
-  li({ children, node: _node, ...props }) {
+  li({ children, node, ...props }) {
+    // T3's MarkdownListItem: a task item carries where it starts in the source, which its box
+    // finds its `[ ]` from when ticked (D1648); remark-gfm marks task items with this class.
+    const isTaskItem = String(props.className ?? "").includes("task-list-item");
     return (
-      <li {...props}>
+      <li {...props} data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}>
         <SkillChips>{children}</SkillChips>
       </li>
+    );
+  },
+  input: function MarkdownInput({ node: _node, type, checked, disabled, ...props }) {
+    const tasks = use(TaskListContext);
+    if (type !== "checkbox" || tasks === undefined) {
+      return (
+        <input
+          {...props}
+          checked={checked}
+          disabled={disabled}
+          readOnly={type === "checkbox"}
+          type={type}
+        />
+      );
+    }
+    return (
+      <input
+        {...props}
+        aria-label="Toggle task"
+        checked={checked}
+        name="markdown-task"
+        onChange={(event) => {
+          const listItemStart = Number(event.currentTarget.closest("li")?.dataset.listItemOffset);
+          if (!Number.isSafeInteger(listItemStart)) return;
+          const markerOffset = findTaskListMarkerOffset(tasks.text, listItemStart);
+          if (markerOffset === null) return;
+          tasks.onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
+        }}
+        type="checkbox"
+      />
     );
   },
   td({ children, node: _node, ...props }) {
@@ -508,6 +544,15 @@ function SkillChips(props: { children: ReactNode }) {
   return withSkillChips(props.children, skills);
 }
 
+/** The text and T3's `onTaskListChange` of a markdown whose task boxes can be ticked (D1648). */
+const TaskListContext = createContext<
+  | {
+      readonly text: string;
+      onTaskListChange(input: { markerOffset: number; checked: boolean }): void;
+    }
+  | undefined
+>(undefined);
+
 const PLUGINS = [remarkGfm];
 const PLUGINS_WITH_BREAKS = [remarkGfm, remarkBreaks];
 
@@ -518,13 +563,21 @@ export function ChatMarkdown(props: ChatMarkdownProps) {
       className={cn(CHAT_MARKDOWN_CLASS, props.className)}
       data-streaming={props.streaming === true ? "" : undefined}
     >
-      <ReactMarkdown
-        components={COMPONENTS}
-        urlTransform={keepContextReferences}
-        remarkPlugins={props.lineBreaks === true ? PLUGINS_WITH_BREAKS : PLUGINS}
+      <TaskListContext
+        value={
+          props.onTaskListChange === undefined
+            ? undefined
+            : { text: props.text, onTaskListChange: props.onTaskListChange }
+        }
       >
-        {props.text}
-      </ReactMarkdown>
+        <ReactMarkdown
+          components={COMPONENTS}
+          urlTransform={keepContextReferences}
+          remarkPlugins={props.lineBreaks === true ? PLUGINS_WITH_BREAKS : PLUGINS}
+        >
+          {props.text}
+        </ReactMarkdown>
+      </TaskListContext>
     </div>
   );
 }

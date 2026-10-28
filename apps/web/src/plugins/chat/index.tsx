@@ -96,6 +96,7 @@ import {
   parseAttachmentResource,
 } from "./file-panel-route.ts";
 import { basename } from "./file-chips.tsx";
+import { createFileEdits, useFilePending } from "./file-edits.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { armPasteAsText, consumeArmedPasteAsText } from "../../lib/attachment-files.ts";
@@ -403,8 +404,10 @@ export const chatPlugin = builtin(
       context.services.provide<ChatTools>(CHAT_TOOLS_CAPABILITY, tools);
       const attachmentUrls = createAttachmentUrls();
       context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
+      const fileEdits = context.subscriptions.add(createFileEdits(connections));
       const services: ChatServices = {
         fileReveals: createFileReveals(),
+        fileEdits,
         rightPanel: context.services.tryGet<RightPanel>(RIGHT_PANEL_CAPABILITY),
         context,
         connections,
@@ -992,7 +995,7 @@ export const chatPlugin = builtin(
             id: FILE_PANEL,
             title: "File",
             icon: FileIcon,
-            useTab: ({ surface }) => {
+            useTab: ({ place, surface }) => {
               const theme = useResolvedTheme();
               const path = surface.resource ?? "";
               return {
@@ -1000,6 +1003,8 @@ export const chatPlugin = builtin(
                 icon: (
                   <PierreEntryIcon className="size-3" kind="file" pathValue={path} theme={theme} />
                 ),
+                // T3's dot while the file has unsaved changes (D1645).
+                pending: useFilePending(fileEdits, place, path),
               };
             },
             // T3's "Copy path" of a file's tab.

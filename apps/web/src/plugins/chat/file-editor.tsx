@@ -1,24 +1,20 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/files/FilePreviewPanel.tsx (EditableFileSurface: Pierre's editor on the
-// file, comments on its lines), fileSaveCoordinator.ts and useFileSaveCoordinator.ts (saving half
-// a second after the last change, one write at a time), fileCommentAnnotations.ts and
-// fileEditorDismissal.ts.
+// file, comments on its lines, a change from elsewhere taken in place of its own text),
+// fileCommentAnnotations.ts and fileEditorDismissal.ts.
 //
-// A project's file edited and saved in the file panel, and commented on (t3-parity.md D1438,
-// D1439), in the file panel's chunk.
+// A project's file edited in the file panel, and commented on (t3-parity.md D1438, D1439,
+// D1647), in the file panel's chunk. The panel saves it (file-edits.ts).
 import type { ReviewCommentContextRecord } from "@jhin/agent-api";
 import type { LineAnnotation, SelectedLineRange } from "@pierre/diffs";
 import { Editor, type EditorChangeEvent, type EditorFactory } from "@pierre/diffs/edit";
 import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { DiffComment, DiffCommentAnnotation } from "../../lib/comment-annotation.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { SOURCE_UNSAFE_CSS, useLineReveal } from "./attachment-source.tsx";
 import { buildFileReviewComment, reviewCommentRecord } from "../../lib/review-comment-record.ts";
-
-/** T3's FILE_SAVE_DEBOUNCE_MS. */
-const SAVE_DEBOUNCE_MS = 500;
 
 interface CommentEntry {
   readonly id: string;
@@ -44,106 +40,45 @@ const rangeLabel = (startLine: number, endLine: number) =>
   startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`;
 
 /**
- * T3's FileSaveCoordinator: the latest contents written half a second after the last change, one
- * write at a time, the newest winning; what is left is written when the file closes.
+ * T3's EditableFileSurface: the file in Pierre's editor. `text` is the panel's (what it read, under
+ * its unsaved edits): a change of it from elsewhere (the file changed on disk, D1647) replaces the
+ * editor's text; its own edits coming back do not.
  */
-export function createSaveCoordinator(options: {
-  readonly debounceMs: number;
-  persist(contents: string): Promise<void>;
-  onPendingChange(pending: boolean): void;
-  onError(error: unknown): void;
-}) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let latest = "";
-  let revision = 0;
-  let confirmed = 0;
-  let saving = false;
-  let disposed = false;
-  const persistLatest = async (): Promise<void> => {
-    if (saving || revision === confirmed) return;
-    saving = true;
-    const contents = latest;
-    const saved = revision;
-    try {
-      await options.persist(contents);
-      confirmed = saved;
-    } catch (error) {
-      options.onError(error);
-    } finally {
-      saving = false;
-    }
-    if (saved === revision) {
-      if (confirmed === saved) options.onPendingChange(false);
-      return;
-    }
-    if (disposed) void persistLatest();
-    else schedule();
-  };
-  const schedule = () => {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = undefined;
-      void persistLatest();
-    }, options.debounceMs);
-  };
-  return {
-    change(contents: string) {
-      if (disposed) return;
-      latest = contents;
-      revision += 1;
-      options.onPendingChange(true);
-      schedule();
-    },
-    dispose() {
-      disposed = true;
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
-      if (revision !== confirmed) void persistLatest();
-    },
-  };
-}
-
-/** T3's EditableFileSurface: the file in Pierre's editor, saved as it changes. */
 export function FileEditor(props: {
   readonly name: string;
   readonly path: string;
   readonly text: string;
   readonly wordWrap: boolean;
   readonly reveal?: { readonly line: number; readonly id: number } | undefined;
-  save(contents: string): Promise<void>;
-  onSaveError(error: unknown): void;
+  /** The text was edited here: the panel keeps and saves it. */
+  onChange(contents: string): void;
   /** Puts a comment's record into the open thread's composer; whether it went in. */
   comment(record: ReviewCommentContextRecord): boolean;
   uncomment(contextId: string): void;
 }) {
   const theme = useResolvedTheme();
-  const [file] = useState(() => ({ name: props.name, contents: props.text }));
-  const onPostRender = useLineReveal(props.text, props.reveal);
-  const latest = useRef(props.text);
+  // The editor owns the draft, so its own edits echoing back keep the file; only a change from
+  // elsewhere replaces it (T3's externalFile and editedContents).
+  const [external, setExternal] = useState(() => ({ name: props.name, contents: props.text }));
+  const [edited, setEdited] = useState<string | null>(null);
+  if (props.text !== (edited ?? external.contents)) {
+    setExternal({ name: props.name, contents: props.text });
+    setEdited(null);
+  }
+  // What the editor shows now.
+  const contents = edited ?? external.contents;
+  const onPostRender = useLineReveal(contents, props.reveal);
   const [annotations, setAnnotations] = useState<CommentAnnotation[]>([]);
   const [selected, setSelected] = useState<SelectedLineRange | null>(null);
   const editor = useRef<Editor<"file", CommentGroup, undefined> | null>(null);
-  const saveRef = useRef(props.save);
-  saveRef.current = props.save;
-  const errorRef = useRef(props.onSaveError);
-  errorRef.current = props.onSaveError;
-  const [coordinator] = useState(() =>
-    createSaveCoordinator({
-      debounceMs: SAVE_DEBOUNCE_MS,
-      persist: (contents) => saveRef.current(contents),
-      onPendingChange: () => undefined,
-      onError: (error) => errorRef.current(error),
-    }),
-  );
-  useEffect(() => () => coordinator.dispose(), [coordinator]);
 
   const onEditChange = ({
-    file: edited,
+    file: changed,
     lineAnnotations,
   }: EditorChangeEvent<"file", CommentGroup, undefined>) => {
-    if (edited.contents === latest.current) return;
-    latest.current = edited.contents;
-    coordinator.change(edited.contents);
+    if (changed.contents === contents) return;
+    setEdited(changed.contents);
+    props.onChange(changed.contents);
     // T3's remapFileCommentAnnotations: a comment follows its lines as the text moves.
     if (lineAnnotations !== undefined) {
       setAnnotations(
@@ -204,7 +139,7 @@ export function FileEditor(props: {
         startLine: entry.startLine,
         endLine: entry.endLine,
         text,
-        contents: latest.current,
+        contents,
       }),
       entry.id,
     );
@@ -245,7 +180,7 @@ export function FileEditor(props: {
               editor.current = null;
             },
           }}
-          file={file}
+          file={external}
           lineAnnotations={annotations}
           onEditChange={onEditChange}
           options={{

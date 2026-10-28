@@ -1,11 +1,14 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/files/FilePreviewPanel.tsx (a workspace file beside the thread, its
-// breadcrumbs, its read error with "Try again") and the file tab of
+// breadcrumbs, its read error with "Try again", its "Read-only connection" notice, its
+// RenderedMarkdownSurface ticking task boxes, its file read again while nothing is pending),
+// hooks/useWorkspaceMutationRefresh.ts, files/useFileSaveCoordinator.ts and the file tab of
 // apps/web/src/components/RightPanelTabs.tsx.
 //
 // A mentioned file's preview right of the thread (t3-parity.md D1342): a chunk of its own (D440),
-// loaded when the panel first opens. The file is read through `projects.read-file`.
-import type { NodeTarget } from "@jhin/client-api";
+// loaded when the panel first opens. The file is read through `projects.read-file`, and written
+// through `projects.write-file` as it is edited (D1438, D1645–D1648).
+import type { NodeCatalog, NodeTarget } from "@jhin/client-api";
 import { targetKey } from "@jhin/client-api";
 import type { StoredAttachment } from "@jhin/agent-api";
 import type { EditorInfo } from "@jhin/host-api";
@@ -20,9 +23,11 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { ChevronDownIcon, FolderTreeIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { decodeFilePreviewText, filePreviewKind } from "../../lib/file-preview.ts";
 import { useCatalog } from "../../lib/hooks.ts";
+import { setMarkdownTaskChecked } from "../../lib/markdown-tasks.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { preferredEditor, rememberEditor } from "../../lib/preferred-editor.ts";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
@@ -36,6 +41,12 @@ import { FileExplorer } from "./file-explorer.tsx";
 import { FileEditor } from "./file-editor.tsx";
 import { useAttachmentLoader } from "./attachment-media.tsx";
 import { basename } from "./file-chips.tsx";
+import {
+  createSaveCoordinator,
+  isPermissionDenied,
+  SAVE_DEBOUNCE_MS,
+  type SaveCoordinator,
+} from "./file-edits.ts";
 import { revealKey } from "./file-panel-route.ts";
 import { isTooLarge, type PreviewFile, readPreviewFile } from "./preview-file.ts";
 import { useChat } from "./services.ts";
@@ -211,6 +222,44 @@ export function FilesPanel(props: {
   );
 }
 
+/** A file read, with its text when it is text (else the preview reads it, and says why it cannot). */
+interface ReadFile {
+  readonly file: PreviewFile;
+  readonly text?: { readonly text: string; readonly truncated: boolean };
+}
+
+/** The panel holds a text file's text, so its edits show over what was read (D1647). */
+async function readFile(read: () => Promise<PreviewFile>, name: string): Promise<ReadFile> {
+  const file = await read();
+  if (!["text", "markdown", "html"].includes(filePreviewKind({ name }))) return { file };
+  try {
+    return { file, text: decodeFilePreviewText(new Uint8Array(await file.file.arrayBuffer())) };
+  } catch {
+    return { file };
+  }
+}
+
+/**
+ * What says a file may have changed on disk (D1647): a turn starting or ending in a thread that
+ * works in its folder, the project's or a worktree (T3 reads again after a turn's file change or
+ * command, `useWorkspaceMutationRefresh`).
+ */
+function turnsIn(
+  catalog: NodeCatalog | undefined,
+  projectId: string | undefined,
+  worktreePath: string | undefined,
+): string {
+  return (catalog?.threads ?? [])
+    .filter(
+      (thread) =>
+        thread.projectId === projectId &&
+        thread.worktreePath === worktreePath &&
+        thread.lastTurn !== undefined,
+    )
+    .map((thread) => `${thread.id}:${thread.lastTurn!.turnId}:${thread.lastTurn!.status}`)
+    .join("|");
+}
+
 /** T3's inline right panel: its tab of the file, then the file. */
 export function FilePanel(props: FilePanelProps) {
   const chat = useChat();
@@ -225,20 +274,72 @@ export function FilePanel(props: FilePanelProps) {
   const name = basename(props.path);
   const [revision, setRevision] = useState(0);
   const [read, setRead] = useState<
-    { key: string; file: PreviewFile } | { key: string; error: string } | undefined
+    ({ key: string } & ReadFile) | { key: string; error: string } | undefined
   >();
   // Everything the read depends on: another node, thread, project, file or retry reads again.
   const key = `${targetKey(props.target)}|${projectId ?? ""}|${props.threadId ?? ""}|${props.path}|${revision}`;
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  // The file of this place, as links to its lines (D1430), its edits and its tab (D1645) know it.
+  const fileKey = revealKey(
+    {
+      target: props.target,
+      ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+      ...(props.projectId === undefined ? {} : { projectId: props.projectId }),
+    },
+    props.path,
+  );
+  const draft = useSyncExternalStore(chat.fileEdits.subscribe, () => chat.fileEdits.draft(fileKey));
+  const pending = useSyncExternalStore(chat.fileEdits.subscribe, () =>
+    chat.fileEdits.pending(fileKey),
+  );
+  const readOnly = useSyncExternalStore(chat.fileEdits.subscribe, () =>
+    chat.fileEdits.readOnly(props.target),
+  );
+  const readThis = () =>
+    readFile(
+      () =>
+        readPreviewFile(chat.threads, props.target, name, "projects.read-file", {
+          projectId,
+          ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+          path: props.path,
+        }),
+      name,
+    );
+  /** Bumped by each read again: only the newest one's answer shows. */
+  const reads = useRef(0);
+  /**
+   * Reads the file again in place, what shows staying until it comes (D1647). Whichever read
+   * lands, a written copy still shown goes then: it is on disk, and the read has it.
+   */
+  const refresh = () => {
+    const at = key;
+    const sequence = (reads.current += 1);
+    void readThis().then(
+      (file) => {
+        if (keyRef.current !== at || reads.current !== sequence) return;
+        setRead((shown) => (shown?.key === at ? { key: at, ...file } : shown));
+        const written = chat.fileEdits.draft(fileKey);
+        if (written?.confirmed === true) chat.fileEdits.settle(fileKey, written);
+      },
+      // A failed read again keeps what shows, the written copy too, until a read lands.
+      () => undefined,
+    );
+  };
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     if (projectId === undefined) return;
     let current = true;
-    readPreviewFile(chat.threads, props.target, name, "projects.read-file", {
-      projectId,
-      ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
-      path: props.path,
-    }).then(
-      (file) => current && setRead({ key, file }),
+    // A text written before this read began is what it reads: the written copy goes then.
+    const written = chat.fileEdits.draft(fileKey);
+    readThis().then(
+      (file) => {
+        if (!current) return;
+        setRead({ key, ...file });
+        if (written?.confirmed === true) chat.fileEdits.settle(fileKey, written);
+      },
       (error: unknown) =>
         current &&
         setRead({
@@ -262,18 +363,92 @@ export function FilePanel(props: FilePanelProps) {
   const [explorerOpen, setExplorerOpen] = useState(readExplorerOpen);
   // T3 edits a project's file in place, in the right panel (D1438).
   const editable = props.embedded === true && projectId !== undefined;
+
+  // T3's useFileSaveCoordinator: one session per file, written half a second after the last
+  // change; a write refused for want of permission turns the node's files read-only (D1646).
+  const coordinator = useRef<SaveCoordinator | undefined>(undefined);
+  useEffect(() => {
+    if (!editable) return;
+    const target = props.target;
+    const input = {
+      projectId,
+      ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+      path: props.path,
+    };
+    const created = createSaveCoordinator({
+      debounceMs: SAVE_DEBOUNCE_MS,
+      canPersist: () => !chat.fileEdits.readOnly(target),
+      persist: (contents) =>
+        chat.threads
+          .call(target, "projects.write-file", { ...input, contents })
+          .then(() => undefined),
+      onPendingChange: (value) => chat.fileEdits.setPending(fileKey, value),
+      onConfirmed: (contents) => {
+        const written = chat.fileEdits.confirm(fileKey, contents);
+        if (written === undefined) return false;
+        // T3 reads the file again after its write; the written text shows until a read lands.
+        refreshRef.current();
+        return true;
+      },
+      onError: (error) => {
+        if (isPermissionDenied(error)) {
+          chat.fileEdits.refuse(target);
+          return;
+        }
+        chat.toasts?.show({
+          type: "error",
+          title: "Unable to save file",
+          description: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+    coordinator.current = created;
+    return () => {
+      if (coordinator.current === created) coordinator.current = undefined;
+      created.dispose();
+    };
+  }, [fileKey, editable, projectId, props.target, props.threadId]);
+  // Edits kept while nothing could be written go out once it can again (T3 queues its unsaved
+  // draft when write access returns).
+  useEffect(() => {
+    if (!editable || readOnly) return;
+    let cancelled = false;
+    // After the session above is set up, also when React sets it up twice.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const kept = chat.fileEdits.draft(fileKey);
+      if (kept !== undefined && !kept.confirmed) coordinator.current?.change(kept.contents);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editable, readOnly, fileKey]);
+  /** The text changed here (an edit, a ticked task box): it shows, and is written (D1645). */
+  const edit = (contents: string) => {
+    chat.fileEdits.edit(fileKey, contents);
+    coordinator.current?.change(contents);
+  };
+
+  // T3's useWorkspaceMutationRefresh (D1647): while nothing is pending, a turn that may have
+  // changed the file reads it again, and the editor takes what is on disk.
+  const changes = turnsIn(catalog, projectId, record?.worktreePath);
+  const loaded = shown !== undefined && !("error" in shown);
+  const handled = useRef<{ key: string; changes: string } | undefined>(undefined);
+  useEffect(() => {
+    if (!loaded) return;
+    const seen = handled.current;
+    // The read that just came saw them.
+    if (seen?.key !== key) {
+      handled.current = { key, changes };
+      return;
+    }
+    if (pending || seen.changes === changes) return;
+    handled.current = { key, changes };
+    refresh();
+  }, [key, loaded, changes, pending]);
   // A line asked for by a link to it (D1430).
   const reveal = useSyncExternalStore(chat.fileReveals.subscribe, () =>
-    chat.fileReveals.get(
-      revealKey(
-        {
-          target: props.target,
-          ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
-          ...(props.projectId === undefined ? {} : { projectId: props.projectId }),
-        },
-        props.path,
-      ),
-    ),
+    chat.fileReveals.get(fileKey),
   );
   const showExplorer =
     props.embedded === true &&
@@ -352,6 +527,28 @@ export function FilePanel(props: FilePanelProps) {
       </div>
     ) : (
       <AttachmentFilePreview
+        text={
+          shown.text === undefined || draft === undefined
+            ? shown.text
+            : { text: draft.contents, truncated: false }
+        }
+        notice={
+          editable && readOnly ? (
+            <div className="shrink-0 border-b px-3 py-1.5 text-2xs text-muted-foreground">
+              Read-only connection. Unsaved edits are kept until write access returns.
+            </div>
+          ) : undefined
+        }
+        onTaskListChange={
+          editable && !readOnly && shown.text !== undefined
+            ? ({ markerOffset, checked }) => {
+                // T3's RenderedMarkdownSurface: the box's character swapped in what shows.
+                const current = chat.fileEdits.draft(fileKey)?.contents ?? shown.text!.text;
+                const next = setMarkdownTaskChecked(current, markerOffset, checked);
+                if (next !== current) edit(next);
+              }
+            : undefined
+        }
         actions={
           <>
             {openIn}
@@ -361,30 +558,15 @@ export function FilePanel(props: FilePanelProps) {
         aside={explorer}
         file={shown.file.file}
         renderSource={
-          editable
+          // A read-only connection shows the file's source, as typed (D1646).
+          editable && !readOnly
             ? (source) => (
                 <FileEditor
                   comment={(record) => chat.composer.current?.insertContext(record) === "inserted"}
                   name={name}
-                  onSaveError={(error) =>
-                    chat.toasts?.show({
-                      type: "error",
-                      title: "Unable to save file",
-                      description: error instanceof Error ? error.message : String(error),
-                    })
-                  }
+                  onChange={edit}
                   path={props.path}
                   reveal={reveal}
-                  save={(contents) =>
-                    chat.threads
-                      .call(props.target, "projects.write-file", {
-                        projectId,
-                        ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
-                        path: props.path,
-                        contents,
-                      })
-                      .then(() => undefined)
-                  }
                   text={source.text}
                   uncomment={(contextId) => void chat.composer.current?.removeContext(contextId)}
                   wordWrap={source.wordWrap}
