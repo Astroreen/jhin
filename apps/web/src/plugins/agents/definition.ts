@@ -15,6 +15,8 @@ export interface AgentDraft {
   readonly instructions: string;
   /** A project's id; empty for the scratch project. */
   readonly project: string;
+  /** Whether its runtime loads the node user's own settings (D1561); off when unset. */
+  readonly userSettings: boolean;
 }
 
 type OptionalField = (typeof AGENT_OPTIONAL_FIELDS)[number];
@@ -31,6 +33,7 @@ export function draftOf(agent?: AgentRecord): AgentDraft {
     skills: agent?.skills.join(", ") ?? "",
     instructions: agent?.instructions ?? "",
     project: agent?.projectId ?? "",
+    userSettings: agent?.userSettings === true,
   };
 }
 
@@ -62,6 +65,7 @@ function fieldsOf(draft: AgentDraft) {
     instructions: draft.instructions.trim() === "" ? undefined : draft.instructions,
     skills: skills.length === 0 ? undefined : skills,
     project: text(draft.project),
+    userSettings: draft.userSettings ? true : undefined,
   };
 }
 
