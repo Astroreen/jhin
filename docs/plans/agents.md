@@ -2906,6 +2906,8 @@ Decisions (M3):
   the sign-in, not from `~/.claude`.
 - L3: refocus after a natural compaction in a long run. The run's 1M-token
   windows never filled in two hours; D710 was proven on a manual `/compact`.
+- M3: an away warning keeps the summary it was raised with (D1564): one
+  raised before health first read the mesh's names shows the node's id.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
