@@ -25,6 +25,8 @@ import {
 import { Maximize2Icon, MinusIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { withRenderedPagePolicy } from "./policy.ts";
+
 /** The page's variables from the client's own theme, as T3's `useHtmlRenderTheme`. */
 function currentTheme(): HtmlRenderTheme {
   const root = document.documentElement;
@@ -99,7 +101,8 @@ function HtmlDocument(props: {
       }}
       ref={frameRef}
       sandbox="allow-scripts allow-forms"
-      srcDoc={props.html}
+      // Its own code and HTTPS only: no plain HTTP to the reader's loopback or network (D1689).
+      srcDoc={withRenderedPagePolicy(props.html)}
       style={{
         colorScheme: props.theme.appearance,
         ...(props.height === undefined ? {} : { height: `${props.height}px` }),

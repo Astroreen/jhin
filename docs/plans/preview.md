@@ -1138,6 +1138,32 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
   whose calls are all of one group shows the group's icon (T3's
   `toolGroupSummaryKind`), unless one failed.
 
+### A rendered page's policy (W47)
+
+- **D1689. A rendered page runs under a content security policy in the
+  reader's client.** T3 lets a page's scripts load from any host, so a page
+  in the timeline could also read from the reader's own loopback (the
+  node's address) and network. The web client puts a `<meta
+  http-equiv="Content-Security-Policy">` first in the page it gives the
+  frame's `srcdoc` (after any doctype, so the page keeps its mode): the
+  page's inline code and `eval`, and scripts, styles, images, fonts and
+  media over HTTPS (or `data:` and `blob:`); `connect-src https: data:
+  blob:` (`https:` also admits `wss:`); no plugins or `<base>`, and no
+  embedded frames (`frame-src 'none'`: a page an agent renders draws its
+  content itself, and a frame of another site would bring that site's own
+  rules).
+  Forms are shut too (`form-action 'none'`): a submission would navigate the
+  frame to wherever its action names, so only a form a script handles
+  (`preventDefault`) works, though the frame keeps D407's `allow-forms`. So the
+  page can neither load a subresource nor read a response over plain HTTP
+  or `ws:`: nothing on the reader's loopback or on a device of the
+  reader's network that serves plain HTTP. A page's own policy can only
+  narrow it. The page is unchanged in the thread's stream, and the node's
+  measuring (D405, D406) keeps its proxy, which reaches public addresses
+  only. What a policy cannot stop stays in Deferred: a host that serves
+  HTTPS on a private address, and the frame navigating itself (a GET whose
+  answer the page never reads).
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -1221,10 +1247,12 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
 - T3's outline of a rendered page's boxes for the loading skeleton.
 - Rendered pages in an attachment store (W6's blobs) instead of the
   thread's event log, and with it T3's 25 MiB pages.
-- A content security policy for rendered pages in the reader's client: as
-  in T3, a page's scripts may load from any host (a CDN chart library) and so
-  also reach the reader's own network; only the client's origin is shut out
-  (`sandbox` without `allow-same-origin`).
+- What D1689's policy cannot stop: a rendered page reaching the reader's
+  network over HTTPS (a policy names schemes and hosts, not address
+  ranges), and the page's frame navigating itself to a plain-HTTP address
+  (`location`, a meta refresh or a link: a GET whose answer the page cannot
+  read; a policy does not govern a frame's own navigation). An MCP app's
+  frame (`providers.md` D1403) gets no such policy either.
 - In a rendered page: T3's image viewer for a clicked image and passing the
   app's shortcuts through a focused frame.
 - Viewer ids bound to their caller or their frame subscription (D397).
