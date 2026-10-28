@@ -3124,6 +3124,10 @@ why nothing moved, and took Server down for seven minutes mid-mission.
   members removed the first time answer `removed: false`, so the roster
   stays though nothing is left to remove; `teams.up` defines the team
   afresh either way. Found by #355's last review.
+- M3: `missions.orchestration.record` writes a run's status over the record
+  it read before its awaits (D1571): a run recorded in between by
+  `missions.orchestrate` can be overwritten by the older run's end. Seen in
+  #355's review; one write per mission at a time would close it.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
