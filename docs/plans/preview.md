@@ -1124,8 +1124,10 @@ parts of `DeviceService.ts` and `DeviceMultiHost.test.ts`, and
   the agent's browser tools with T3's labels (its `preview_*`, and
   `t3_preview_list` and `t3_preview_close` for `preview.list` and
   `preview.close`) in the group `browser`; `jhin.device-panel` describes
-  `device.list`, `device.open`, `device.screenshot` and `device.close` in
-  `device`; `jhin.html-render-view` describes `html.preview` and
+  T3's `device.list`, `device.open`, `device.screenshot` and `device.close`
+  and, in the same group `device`, the input and detail commands T3's agents
+  reach through `agent-device` instead (`device.tap`, `device.swipe`,
+  `device.type`, `device.button`, `device.action`, `device.detail`); `jhin.html-render-view` describes `html.preview` and
   `html.render` in groups of their own.
 - **D1682. A group's summary counts its calls**, as T3's
   `summarizeT3ToolCalls`: "Used browser 3 times", "Used device controls 2

@@ -13,7 +13,10 @@ const DEVICE: ChatToolGroup = {
   icon: SmartphoneIcon,
 };
 
-/** The agent's device tools (T3's `device_*`). */
+/**
+ * The agent's device tools: T3's `device_*`, and Jhin's input and detail commands, which T3's
+ * agents reach through `agent-device` instead, in the same group (D1681).
+ */
 const LABELS: Readonly<Record<string, ChatToolPresentation["labels"]>> = {
   "device.list": ["List", "Listing", "Listed", "simulators and emulators"],
   "device.open": ["Open", "Opening", "Opened", "a device in the Device panel"],
@@ -24,6 +27,12 @@ const LABELS: Readonly<Record<string, ChatToolPresentation["labels"]>> = {
     "the device",
   ],
   "device.close": ["Close", "Closing", "Closed", "a device"],
+  "device.detail": ["Read", "Reading", "Read", "the device's details"],
+  "device.action": ["Run", "Running", "Ran", "a device action"],
+  "device.tap": ["Tap", "Tapping", "Tapped", "the device"],
+  "device.swipe": ["Swipe", "Swiping", "Swiped", "on the device"],
+  "device.type": ["Type", "Typing", "Typed", "on the device"],
+  "device.button": ["Press", "Pressing", "Pressed", "a device button"],
 };
 
 /** Names the agent's device tools in the work log; disposing takes them back. */
