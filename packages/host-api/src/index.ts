@@ -105,11 +105,12 @@ export const SECRET_REDACTED = "••••••";
 /**
  * True for the marker, alone or with the address of the secret it stands
  * for as a JSON Pointer (`••••••#/keys/1`): a secret inside a list carries its place in the
- * section, so it stays the same secret when the list is reordered.
+ * section, so it stays the same secret when the list is reordered. Anything
+ * else after `#` (`••••••#note`) is a value, never a marker (security.md D1706).
  */
 export const isRedactedSecret = (value: unknown): value is string =>
   typeof value === "string" &&
-  (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#`));
+  (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#/`));
 
 /**
  * `host.editors@1`, provided by `jhin.editors`: the editors installed on a node

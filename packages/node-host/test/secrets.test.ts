@@ -1,7 +1,7 @@
 import { z } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { SECRET_REDACTED } from "@jhin/host-api";
+import { SECRET_REDACTED, isRedactedSecret } from "@jhin/host-api";
 
 import {
   redactSecrets,
@@ -182,6 +182,29 @@ describe("config secrets (security.md D417)", () => {
     expect(
       restoreSecrets(schema, { keys: [shown.keys[2], shown.keys[1]] }, stored, undefined),
     ).toEqual({ keys: ["third", "second"] });
+  });
+
+  it("takes a value that only starts like a marker as the value it is (security.md D1706)", () => {
+    const schema = schemaOf(
+      z.object({
+        note: z.string().meta({ writeOnly: true }),
+        keys: z.array(z.string().meta({ writeOnly: true })),
+      }),
+    );
+    expect(isRedactedSecret(`${SECRET_REDACTED}#note`)).toBe(false);
+    expect(isRedactedSecret(`${SECRET_REDACTED}#`)).toBe(false);
+    expect(isRedactedSecret(`${SECRET_REDACTED}#/keys/0`)).toBe(true);
+    expect(
+      restoreSecrets(
+        schema,
+        {
+          note: `${SECRET_REDACTED}#note`,
+          keys: [`${SECRET_REDACTED}#`, `${SECRET_REDACTED}#/keys/0`],
+        },
+        { note: "old", keys: ["kept"] },
+        undefined,
+      ),
+    ).toEqual({ note: `${SECRET_REDACTED}#note`, keys: [`${SECRET_REDACTED}#`, "kept"] });
   });
 
   it("refuses an addressed marker that names no secret", () => {
