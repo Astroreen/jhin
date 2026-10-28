@@ -2612,6 +2612,16 @@ Decisions (M3):
   builder asked for the re-review of a changed test, the reviewer sent its
   approval to the builder, and the lead, whose run had ended, waited for an
   approval nobody sent it until the owner said so.
+- **D1565. The inbox's away mark follows the mesh.** While the inbox is
+  open, an open item's `away` mark (D1549) changes with no reload when its
+  sender's node goes away or comes back. The client's node feeds
+  (`createNodeFeeds`) gain `meshChanged`: a source that has it reads the
+  node again whenever the mesh of its connection changes (`client.mesh@1`,
+  which Civilization already follows) and merges the fresh read into the
+  feed's state, so what the stream delivered meanwhile is kept. The inbox
+  takes only the `away` marks from the fresh `agents.inbox.list`. Nothing is
+  pushed: `away` stays derived by the node from `members()` (D1551), never
+  stored or put on the `agents/inbox` stream, so no event type is added.
 
 ## Deferred
 
@@ -2757,10 +2767,10 @@ Decisions (M3):
   arrive (D1526): on a restart they are not replayed in time order with this
   node's streams, so a message sent before a slice was assigned can count
   for it.
-- M2: the inbox's `away` mark (D1549) is read when a node's feed loads
+- ~~M2: the inbox's `away` mark (D1549) is read when a node's feed loads
   `agents.inbox.list`; it does not follow the mesh while the page is open,
   so an item whose sender went away later says so only through the refused
-  answer.
+  answer.~~ M3, D1565.
 - M2: since when a node is away is kept in memory (D1548): after a restart
   of the mission's node, a node away all along counts from the restart, so
   an `away` warning dismissed before is raised once more.
@@ -2925,6 +2935,13 @@ Decisions (M3):
 - M3: the account's own connectors (Claude Code's claude.ai MCP servers)
   still reach a defined agent without user settings (D1561): they come with
   the sign-in, not from `~/.claude`.
+- M3: an inbox item that arrives while its sender's node is already away
+  has no `away` mark until the mesh changes again (D1565):
+  `agents.inbox.received` does not carry it. Answering it is refused with
+  `SENDER_AWAY` all the same (D1549).
+- M3: a member's inbox read through a connection is read again when that
+  connection's mesh changes (D1565), not when the member's own view of the
+  mesh does, so its mark waits for the connection to notice.
 - L3: refocus after a natural compaction in a long run. The run's 1M-token
   windows never filled in two hours; D710 was proven on a manual `/compact`.
 - M3: an away warning keeps the summary it was raised with (D1564): one

@@ -37,6 +37,26 @@ export function applyInboxEvent(
   return items;
 }
 
+/**
+ * Takes the `away` mark of every item `fresh` (a list read after a mesh
+ * change) holds; an item it lacks keeps its mark, the stream decides whether
+ * it is open. The same array when no mark moved.
+ */
+export function applyAwayMarks(
+  items: readonly InboxItem[],
+  fresh: readonly InboxItem[],
+): readonly InboxItem[] {
+  let moved = false;
+  const next = items.map((item) => {
+    const read = fresh.find((other) => other.message.messageId === item.message.messageId);
+    if (read === undefined || (read.away === true) === (item.away === true)) return item;
+    moved = true;
+    const { away: _, ...rest } = item;
+    return read.away === true ? { ...rest, away: true } : rest;
+  });
+  return moved ? next : items;
+}
+
 export type InboxStore = NodeFeeds<readonly InboxItem[]>;
 
 /**
@@ -69,6 +89,9 @@ export function createInboxStore(
         return { head, state: items };
       },
       apply: applyInboxEvent,
+      // `away` is the node's reading of its mesh, never stored (D1549): a mesh
+      // change reads the list again and only the marks are taken from it (D1565).
+      meshChanged: applyAwayMarks,
       reread: (connection, before, after) => {
         const fresh = after
           .filter(
