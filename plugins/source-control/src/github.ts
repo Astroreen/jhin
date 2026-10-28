@@ -175,7 +175,7 @@ function mergeabilityOf(value: unknown): PullRequest["mergeability"] {
  * T3's loginAvatarUrl (D1665): `gh pr view` names no avatar, and GitHub serves one at
  * `<host>/<login>.png` for every login (a bot's `app/…` login is none).
  */
-export function loginAvatarUrl(login: string, host: string): string | null {
+function loginAvatarUrl(login: string, host: string): string | null {
   return /^[a-z0-9][a-z0-9-]{0,38}$/iu.test(login) ? `https://${host}/${login}.png?size=80` : null;
 }
 
