@@ -408,7 +408,8 @@ W42's project scope (D1463) and must land on top of it, never undo it.
   only the section it covers. Choosing another node, another file (D477) or
   another project scope with unsaved edits asks once, naming the sections
   that would lose their edits. Leaving the page with unsaved edits asks the
-  same way.
+  same way (through the settings shell, D1629; other ways out are in
+  Deferred).
 - **D1627. Nothing of the form itself changes.** Fields, validation, layers,
   comments and the plugin controls stay as W16 built them. Only where the
   forms are placed and how they are loaded changes.

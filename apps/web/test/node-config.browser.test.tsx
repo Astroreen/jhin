@@ -47,6 +47,7 @@ function mountSections(
 ) {
   const editor: {
     loaded?: LoadedSections;
+    setLoaded?: (change: (before: LoadedSections) => LoadedSections) => void;
     setNames?: (names: readonly string[]) => void;
     setLayer?: (layer: "node" | "project") => void;
   } = {};
@@ -55,7 +56,7 @@ function mountSections(
     const [layer, setLayer] = useState<"node" | "project">("node");
     editor.setNames = setNames;
     editor.setLayer = setLayer;
-    [editor.loaded] = useLoadedSections(client, names, layer);
+    [editor.loaded, editor.setLoaded] = useLoadedSections(client, names, layer);
     return null;
   }
   const root = createRoot(document.createElement("div"));
@@ -104,6 +105,26 @@ describe("every section of the page, read at once (D1624)", () => {
     expect(Object.keys(editor.loaded ?? {})).toEqual(["b"]);
     await node.answer("a", { from: "a" });
     expect(editor.loaded?.["a"]?.value).toEqual({ from: "a" });
+    unmount();
+  });
+
+  it("keeps unsaved edits when the sections are read again", async () => {
+    const answers: ((value: unknown) => void)[] = [];
+    const client = {
+      call: <T,>() => new Promise<T>((resolve) => answers.push((value) => resolve(value as T))),
+    };
+    const { editor, unmount } = mountSections(client, ["a"]);
+    await act(async () => answers[0]!({ sections: { a: { layers: { node: { x: 1, y: 1 } } } } }));
+    act(() =>
+      editor.setLoaded!((before) => ({ ...before, a: { ...before["a"]!, value: { x: 2, y: 1 } } })),
+    );
+    // A section added: everything is read again, and the edit stays on top of the new file.
+    act(() => editor.setNames!(["a", "b"]));
+    expect(editor.loaded?.["a"]?.value).toEqual({ x: 2, y: 1 });
+    await act(async () =>
+      answers[1]!({ sections: { a: { layers: { node: { x: 1, y: 5 } } }, b: { layers: {} } } }),
+    );
+    expect(editor.loaded?.["a"]).toMatchObject({ value: { x: 2, y: 5 }, rebased: true });
     unmount();
   });
 

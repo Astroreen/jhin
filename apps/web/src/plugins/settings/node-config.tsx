@@ -200,16 +200,24 @@ export function useLoadedSections(
   useEffect(() => {
     if (names === undefined) return;
     let current = true;
-    setLoaded({});
+    // Sections no longer listed go; the others stay, edits included, until their answer lands.
+    setLoaded((before) =>
+      Object.fromEntries(Object.entries(before).filter(([section]) => names.includes(section))),
+    );
     void readConfigSections(
       (method, params) => client.call(method, params),
       names,
       (section, read) => {
         if (!current) return;
-        setLoaded((before) => ({
-          ...before,
-          [section]: loadedFrom(section, layerNow.current, read),
-        }));
+        setLoaded((before) => {
+          const kept = before[section];
+          // Read again (a reconnect, a plugin added): unsaved edits stay, on top of the answer.
+          const next =
+            kept !== undefined && isEdited(kept)
+              ? rebase(kept, read)
+              : loadedFrom(section, layerNow.current, read);
+          return { ...before, [section]: next };
+        });
       },
     );
     return () => {
