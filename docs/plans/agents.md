@@ -3128,6 +3128,13 @@ why nothing moved, and took Server down for seven minutes mid-mission.
   it read before its awaits (D1571): a run recorded in between by
   `missions.orchestrate` can be overwritten by the older run's end. Seen in
   #355's review; one write per mission at a time would close it.
+- M3: a change of the mesh while a node's feed is still loading is not read
+  again (D1565): the inbox can keep the `away` marks of its first read until
+  the next change. Found by #355's review.
+- M3: the forwarding node finds the calling agent with `threads.get` as a
+  caller it names itself, `jhin.missions` with `threads.read` (D1568); a
+  grant of the plugin's own would say so in its manifest. Found by #355's
+  review.
 - L3: an ask naming the slices it is about. D1263 takes every blocked slice
   to be what the lead's open asks are about, so while a slice is blocked for
   another reason (a builder stuck) an ask cannot hold the whole mission.
